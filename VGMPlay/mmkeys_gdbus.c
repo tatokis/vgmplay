@@ -1,0 +1,808 @@
+/*
+DBus/MPRIS for VGMPlay.
+By Tasos Sahanidis <vgmsrc@tasossah.com>
+
+required packages:
+libdbus-1-dev
+
+compiling:
+CFLAGS=$(pkg-config --cflags dbus-1)
+LDFLAGS=$(pkg-config --libs dbus-1)
+*/
+
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <pthread.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <dbus/dbus.h>
+#include <pthread.h>
+#include "chips/mamedef.h"	// for UINT8
+#include "mmkeys.h"
+#include "stdbool.h"
+#include "VGMFile.h"
+#include <errno.h>
+#include <locale.h>
+#include <wchar.h>
+
+// DBus MPRIS Constants
+#define DBUS_MPRIS_PATH "/org/mpris/MediaPlayer2"
+#define DBUS_MPRIS_MEDIAPLAYER2 "org.mpris.MediaPlayer2"
+#define DBUS_MPRIS_PLAYER "org.mpris.MediaPlayer2.Player"
+#define DBUS_PROPERTIES "org.freedesktop.DBus.Properties"
+
+static mmkey_cbfunc evtCallback = NULL;
+static pthread_t mainloop_thread = 0;
+static int runloop = 1;
+INT32 VGMPbSmplCount;
+
+extern INT32 VGMSmplPlayed;
+extern UINT32 SampleRate;
+extern GD3_TAG VGMTag;
+extern wchar_t *GetTagStrEJ(const wchar_t* EngTag, const wchar_t* JapTag);
+extern INT32 SampleVGM2Playback(INT32 SampleVal);
+extern VGM_HEADER VGMHead;
+
+// Playlist status
+extern UINT32 PLFileCount;
+extern UINT32 CurPLFile;
+extern UINT8 PLMode;
+
+// Playback Status
+extern UINT8 PlayingMode;
+extern bool PausePlay;
+
+// Sigh
+static DBusConnection *connection;
+
+// Seek Function
+extern void SeekVGM(bool Relative, INT32 PlayBkSamples);
+
+// Return current position in μs
+static int64_t ReturnPosMsec(UINT32 SamplePos, UINT32 SmplRate)
+{
+	return (int64_t)(SamplePos / (double)SmplRate)*1000000;
+}
+
+// Return current position in samples
+static INT32 ReturnSamplePos(int64_t UsecPos, UINT32 SmplRate)
+{
+    return (UsecPos / 1000000)*(double)SmplRate;
+}
+
+// Main Loop
+static void *MainLoop(void *conn)
+{
+    while(runloop)
+    {
+        dbus_connection_read_write_dispatch(conn, 1000);
+    }
+    //dbus_connection_unref(conn);
+    //pthread_exit(0);
+    return NULL;
+}
+
+static void HandleError(DBusError *error)
+{
+    if (dbus_error_is_set(error))
+    {
+        puts(error->message);
+    }
+}
+
+static void DBusEmptyMethodResponse(DBusConnection *connection, DBusMessage *request)
+{
+    DBusMessage *reply;
+    //DBusError error;
+
+    reply = dbus_message_new_method_return(request);
+    dbus_message_append_args(reply, DBUS_TYPE_INVALID);
+    dbus_connection_send(connection, reply, NULL);
+    dbus_message_unref(reply);
+}
+
+static void DBusReplyToIntrospect(DBusConnection *connection, DBusMessage *request)
+{
+    DBusMessage *reply;
+ 
+    const char *introspection_data =
+"<!DOCTYPE node PUBLIC \"-//freedesktop//DTD D-BUS Object Introspection 1.0//EN\"\n"
+"\"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\n"
+"<node>\n"
+"  <interface name=\"org.freedesktop.DBus.Introspectable\">\n"
+"    <method name=\"Introspect\">\n"
+"      <arg name=\"data\" direction=\"out\" type=\"s\"/>\n"
+"    </method>\n"
+"  </interface>\n"
+"  <interface name=\"org.freedesktop.DBus.Properties\">\n"
+"    <method name=\"Get\">\n"
+"      <arg direction=\"in\" type=\"s\"/>\n"
+"      <arg direction=\"in\" type=\"s\"/>\n"
+"      <arg direction=\"out\" type=\"v\"/>\n"
+"    </method>\n"
+"    <method name=\"Set\">\n"
+"      <arg direction=\"in\" type=\"s\"/>\n"
+"      <arg direction=\"in\" type=\"s\"/>\n"
+"      <arg direction=\"in\" type=\"v\"/>\n"
+"    </method>\n"
+"    <method name=\"GetAll\">\n"
+"      <arg direction=\"in\" type=\"s\"/>\n"
+"      <arg direction=\"out\" type=\"a{sv}\"/>\n"
+"    </method>\n"
+"    <signal name=\"PropertiesChanged\">\n"
+"      <arg type=\"s\"/>\n"
+"      <arg type=\"a{sv}\"/>\n"
+"      <arg type=\"as\"/>\n"
+"    </signal>\n"
+"  </interface>\n"
+"  <interface name=\"org.mpris.MediaPlayer2\">\n"
+"    <property name=\"Identity\" type=\"s\" access=\"read\" />\n"
+"    <property name=\"DesktopEntry\" type=\"s\" access=\"read\" />\n"
+"    <property name=\"SupportedMimeTypes\" type=\"as\" access=\"read\" />\n"
+"    <property name=\"SupportedUriSchemes\" type=\"as\" access=\"read\" />\n"
+"    <property name=\"HasTrackList\" type=\"b\" access=\"read\" />\n"
+"    <property name=\"CanQuit\" type=\"b\" access=\"read\" />\n"
+"    <property name=\"CanRaise\" type=\"b\" access=\"read\" />\n"
+"    <method name=\"Quit\" />\n"
+"    <method name=\"Raise\" />\n"
+"  </interface>\n"
+"  <interface name=\"org.mpris.MediaPlayer2.Player\">\n"
+"    <property name=\"Metadata\" type=\"a{sv}\" access=\"read\" />\n"
+"    <property name=\"PlaybackStatus\" type=\"s\" access=\"read\" />\n"
+"    <property name=\"LoopStatus\" type=\"s\" access=\"readwrite\" />\n"
+"    <property name=\"Volume\" type=\"d\" access=\"readwrite\" />\n"
+"    <property name=\"Shuffle\" type=\"d\" access=\"readwrite\" />\n"
+"    <property name=\"Position\" type=\"x\" access=\"read\" />\n"
+"    <property name=\"Rate\" type=\"d\" access=\"readwrite\" />\n"
+"    <property name=\"MinimumRate\" type=\"d\" access=\"readwrite\" />\n"
+"    <property name=\"MaximumRate\" type=\"d\" access=\"readwrite\" />\n"
+"    <property name=\"CanControl\" type=\"b\" access=\"read\" />\n"
+"    <property name=\"CanGoNext\" type=\"b\" access=\"read\" />\n"
+"    <property name=\"CanGoPrevious\" type=\"b\" access=\"read\" />\n"
+"    <property name=\"CanPlay\" type=\"b\" access=\"read\" />\n"
+"    <property name=\"CanPause\" type=\"b\" access=\"read\" />\n"
+"    <property name=\"CanSeek\" type=\"b\" access=\"read\" />\n"
+"    <method name=\"Previous\" />\n"
+"    <method name=\"Next\" />\n"
+"    <method name=\"Stop\" />\n"
+"    <method name=\"Play\" />\n"
+"    <method name=\"Pause\" />\n"
+"    <method name=\"PlayPause\" />\n"
+"    <method name=\"Seek\">\n"
+"      <arg type=\"x\" direction=\"in\" />\n"
+"    </method>"
+"    <method name=\"OpenUri\">\n"
+"      <arg type=\"s\" direction=\"in\" />\n"
+"    </method>\n"
+"    <method name=\"SetPosition\">\n"
+"      <arg type=\"o\" direction=\"in\" />\n"
+"      <arg type=\"x\" direction=\"in\" />\n"
+"    </method>\n"
+"  </interface>\n"
+/*"  <interface name=\"org.mpris.MediaPlayer2.TrackList\">\n"
+"    <property name=\"Tracks\" type=\"ao\" access=\"read\" />\n"
+"    <property name=\"CanEditTracks\" type=\"b\" access=\"read\" />\n"
+"    <method name=\"GetTracksMetadata\">\n"
+"      <arg type=\"ao\" direction=\"in\" />\n"
+"      <arg type=\"aa{sv}\" direction=\"out\" />\n"
+"    </method>\n"
+"    <method name=\"AddTrack\">\n"
+"      <arg type=\"s\" direction=\"in\" />\n"
+"      <arg type=\"o\" direction=\"in\" />\n"
+"      <arg type=\"b\" direction=\"in\" />\n"
+"    </method>\n"
+"    <method name=\"RemoveTrack\">\n"
+"      <arg type=\"o\" direction=\"in\" />\n"
+"    </method>\n"
+"    <method name=\"GoTo\">\n"
+"      <arg type=\"o\" direction=\"in\" />\n"
+"    </method>\n"
+"    <signal name=\"TrackListReplaced\">\n"
+"      <arg type=\"ao\" />\n"
+"      <arg type=\"o\" />\n"
+"    </signal>\n"
+"    <signal name=\"TrackAdded\">\n"
+"      <arg type=\"a{sv}\" />\n"
+"      <arg type=\"o\" />\n"
+"    </signal>\n"
+"    <signal name=\"TrackRemoved\">\n"
+"      <arg type=\"o\" />\n"
+"    </signal>\n"
+"    <signal name=\"TrackMetadataChanged\">\n"
+"      <arg type=\"o\" />\n"
+"      <arg type=\"a{sv}\" />\n"
+"    </signal>\n"
+"  </interface>\n"*/
+"</node>\n"
+;
+
+    reply = dbus_message_new_method_return(request);
+    dbus_message_append_args(reply,
+        DBUS_TYPE_STRING, &introspection_data,
+        DBUS_TYPE_INVALID);
+    dbus_connection_send(connection, reply, NULL);
+    dbus_message_unref(reply);
+}
+
+typedef struct DBusMetadata
+{
+    void *title;
+    char *dbusType;
+    void *content;
+    int contentType;
+    size_t childLen;
+} DBusMetadata;
+
+static char *wcharToUTF8(wchar_t *GD3)
+{
+    size_t len = wcstombs(NULL, GD3, 0) + 1;
+    char *out = malloc(len);
+    wcstombs(out, GD3, len);
+    return out;
+}
+
+static void DBusReplyWithVariant(DBusMessageIter *args, int type, char *type_as_string, void *response)
+{
+    DBusMessageIter subargs;
+    dbus_message_iter_open_container(args, DBUS_TYPE_VARIANT, type_as_string, &subargs);
+        dbus_message_iter_append_basic(&subargs, type, response);
+    dbus_message_iter_close_container(args, &subargs);
+}
+
+static void DBusSendMetadataArray(DBusMessageIter *dict_root, DBusMetadata meta[], size_t dbus_meta_array_len)
+{
+    DBusMessageIter root_variant, dict, dict_entry, variant;
+
+    dbus_message_iter_open_container(dict_root, DBUS_TYPE_VARIANT, "a{sv}", &root_variant);    
+        // Open Root Container
+        dbus_message_iter_open_container(&root_variant, DBUS_TYPE_ARRAY, "{sv}", &dict );
+            for(size_t i = 0; i < dbus_meta_array_len; i++)
+            {
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &meta[i].title);
+                    // Field Value
+                    dbus_message_iter_open_container(&dict_entry, DBUS_TYPE_VARIANT, meta[i].dbusType, &variant);
+                    
+                        if(meta[i].contentType == DBUS_TYPE_ARRAY)
+                        {
+                            DBusMessageIter array_root;
+                            
+                            dbus_message_iter_open_container(&variant, meta[i].contentType, meta[i].dbusType, &array_root);
+
+                                for(size_t len = 0; len < meta[i].childLen; len++)
+                                {
+                                    DBusMetadata *chad = meta[i].content;
+                                    dbus_message_iter_append_basic(&array_root, chad[len].contentType, chad[len].content);
+                                }
+                                    
+                            dbus_message_iter_close_container(&variant, &array_root);
+                        }
+                        else
+                            dbus_message_iter_append_basic(&variant, meta[i].contentType, meta[i].content);
+                                
+                    dbus_message_iter_close_container(&dict_entry, &variant);
+                    
+                dbus_message_iter_close_container(&dict, &dict_entry ); 
+            }
+        // Close Root Container
+        dbus_message_iter_close_container(&root_variant, &dict);
+    dbus_message_iter_close_container(dict_root, &root_variant);
+}
+
+static void DBusSendMetadata(DBusMessageIter *dict_root)
+{
+    // Send an empty array in a variant if nothing is playing
+    if(PlayingMode == 0xFF)
+    {
+        DBusSendMetadataArray(dict_root, NULL, 0);
+        return;
+    }
+    // Prepare metadata
+    wchar_t *album = GetTagStrEJ(VGMTag.strGameNameE, VGMTag.strGameNameJ);
+    char *utf8album = wcharToUTF8(album);
+
+    wchar_t *title =  GetTagStrEJ(VGMTag.strTrackNameE, VGMTag.strTrackNameJ);
+    char *utf8title = wcharToUTF8(title);
+
+    int64_t len64 = 0;
+    VGMPbSmplCount = SampleVGM2Playback(VGMHead.lngTotalSamples);
+    len64 = ReturnPosMsec(VGMPbSmplCount, SampleRate);
+            
+    wchar_t *artist =  GetTagStrEJ(VGMTag.strAuthorNameE, VGMTag.strAuthorNameJ);
+    char *utf8artist = wcharToUTF8(artist);
+
+    int32_t tracknum = 0;
+    if(PLMode == 0x01)
+        tracknum = (int32_t)(CurPLFile + 0x01);
+            
+    struct DBusMetadata dbusartist[1] = 
+    {
+        { "", DBUS_TYPE_STRING_AS_STRING, &utf8artist, DBUS_TYPE_STRING, 0 },
+    };
+
+    char *genre = "Video Game Music";
+    struct DBusMetadata dbusgenre[1] = 
+    {
+        { "", DBUS_TYPE_STRING_AS_STRING, &genre, DBUS_TYPE_STRING, 0 },
+    };
+    
+    // More stubs
+    char *trackid = "/org/mpris/MediaPlayer2/CurrentTrack";
+    char *lastused = "2018-01-04T12:21:32Z";
+    char *url = "file:///home/tatokis/%CE%95%CF%80%CE%B9%CF%86%CE%AC%CE%BD%CE%B5%CE%B9%CE%B1%20%CE%B5%CF%81%CE%B3%CE%B1%CF%83%CE%AF%CE%B1%CF%82/VGM/Ys%20II%20Special/01%20The%20Morning%20Glow.vgz";
+    char *arturl = "file:///home/tatokis/%CE%95%CF%80%CE%B9%CF%86%CE%AC%CE%BD%CE%B5%CE%B9%CE%B1%20%CE%B5%CF%81%CE%B3%CE%B1%CF%83%CE%AF%CE%B1%CF%82/VGM/Ys%20II%20Special/Ys%20II%20Special.png";
+    int32_t discnum = 1;
+    int32_t usecnt = 0;
+    double userrating = 0;
+    
+    struct DBusMetadata meta[] = 
+    {
+        { "mpris:trackid", DBUS_TYPE_STRING_AS_STRING, &trackid, DBUS_TYPE_STRING, 0 },
+        { "xesam:url", DBUS_TYPE_STRING_AS_STRING, &url, DBUS_TYPE_STRING, 0 },
+        { "mpris:artUrl", DBUS_TYPE_STRING_AS_STRING, &arturl, DBUS_TYPE_STRING, 0 },
+        { "xesam:lastused", DBUS_TYPE_STRING_AS_STRING, &lastused, DBUS_TYPE_STRING, 0 },
+        { "xesam:genre", "as", &dbusgenre, DBUS_TYPE_ARRAY, 1 },
+        { "xesam:album", DBUS_TYPE_STRING_AS_STRING, &utf8album, DBUS_TYPE_STRING, 0 },
+        { "xesam:title", DBUS_TYPE_STRING_AS_STRING, &utf8title, DBUS_TYPE_STRING, 0 },
+        { "mpris:length", DBUS_TYPE_INT64_AS_STRING, &len64, DBUS_TYPE_INT64, 0 },
+        { "xesam:artist", "as", &dbusartist, DBUS_TYPE_ARRAY, 1 },
+        { "xesam:composer", "as", &dbusartist, DBUS_TYPE_ARRAY, 1 },
+        { "xesam:trackNumber", DBUS_TYPE_INT32_AS_STRING, &tracknum, DBUS_TYPE_INT32, 1 },
+        { "xesam:discNumber", DBUS_TYPE_INT32_AS_STRING, &discnum, DBUS_TYPE_INT32, 1 },
+        { "xesam:useCount", DBUS_TYPE_INT32_AS_STRING, &usecnt, DBUS_TYPE_INT32, 1 },
+        { "xesam:userRating", DBUS_TYPE_DOUBLE_AS_STRING, &userrating, DBUS_TYPE_DOUBLE, 1 },
+
+    };
+    #define DBUS_META_LEN sizeof(meta) / sizeof(*meta)
+
+    DBusSendMetadataArray(dict_root, meta, DBUS_META_LEN);
+
+    free(utf8title);
+    free(utf8album);
+    free(utf8artist);
+}
+
+static void DBusSendPlaybackStatus(DBusMessageIter *args)
+{
+    char *response;
+
+    if(PlayingMode == 0xFF)
+        response = "Stopped";
+    else if(PausePlay)
+        response = "Paused";
+    else
+        response = "Playing";
+
+    DBusReplyWithVariant(args, DBUS_TYPE_STRING, DBUS_TYPE_STRING_AS_STRING, &response);
+}
+
+void DBusEmitSignal(UINT8 type)
+{
+    // Make sure we're connected to DBus
+    // Otherwise discard the event
+    if(!dbus_connection_get_is_connected(connection))
+        return;
+
+    DBusMessage *msg;
+    DBusMessageIter args;
+    
+    if(!!(type & SIGNAL_SEEK))
+    {              
+        msg = dbus_message_new_signal(DBUS_MPRIS_PATH, DBUS_MPRIS_PLAYER, "Seeked");
+        if (NULL == msg)
+        { 
+            fprintf(stderr, "Message Null\n"); 
+            exit(1); 
+        }
+
+        dbus_message_iter_init_append(msg, &args);
+        int64_t response = ReturnPosMsec(VGMSmplPlayed, SampleRate);
+        if (!dbus_message_iter_append_basic(&args, DBUS_TYPE_INT64, &response)) { 
+            fprintf(stderr, "Out Of Memory!\n"); 
+            exit(1);
+        }
+
+        if (!dbus_connection_send(connection, msg, NULL))
+        {
+            fprintf(stderr, "Out Of Memory!\n"); 
+            exit(1);
+        }
+        
+
+        dbus_message_unref(msg);
+        
+        // Seeked() is a different signal
+        // Return only if there are no other signals to be sent
+        if(type == SIGNAL_SEEK)
+            return;
+    }
+    
+    msg = dbus_message_new_signal(DBUS_MPRIS_PATH, DBUS_PROPERTIES, "PropertiesChanged");
+
+    dbus_message_iter_init_append(msg, &args);
+    char *player = DBUS_MPRIS_PLAYER;
+    dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &player);
+    // Wrap everything inside an a{sv}
+    DBusMessageIter dict, dict_entry, second_entry;
+
+        dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict );
+                if(!!(type & SIGNAL_METADATA))
+                {
+                    dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                        // Field Title
+                        char *title = "Metadata";
+                        dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                            DBusSendMetadata(&dict_entry);
+                    dbus_message_iter_close_container(&dict, &dict_entry);
+                }
+                if(!!(type & SIGNAL_PLAYSTATUS))
+                {
+                    dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &second_entry);
+                        // Stub it
+                        char *playing = "PlaybackStatus";
+                        dbus_message_iter_append_basic(&second_entry, DBUS_TYPE_STRING, &playing);
+                        DBusSendPlaybackStatus(&second_entry);
+
+                    dbus_message_iter_close_container(&dict, &second_entry);
+                }
+        dbus_message_iter_close_container(&args, &dict);
+        
+    // We have no invalidated properties, so send a blank array
+    DBusMessageIter invalidated;
+    dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "as", &invalidated);
+    dbus_message_iter_close_container(&args, &invalidated);
+        
+    dbus_connection_send(connection, msg, NULL);
+    dbus_message_unref(msg);
+}
+
+static void DBusSendMimeTypes(DBusMessageIter *args)
+{
+    DBusMessageIter variant, subargs;
+    dbus_message_iter_open_container(args, DBUS_TYPE_VARIANT, "as", &variant);
+        dbus_message_iter_open_container(&variant, DBUS_TYPE_ARRAY, DBUS_TYPE_STRING_AS_STRING, &subargs);
+            char *response[] = {"audio/x-vgm", "audio/x-vgz"};
+            size_t i_len = sizeof( response ) / sizeof( *response );
+            for( size_t i = 0; i < i_len; ++i )
+            {
+                dbus_message_iter_append_basic(&subargs, DBUS_TYPE_STRING, &response[i]);
+            }
+        dbus_message_iter_close_container(&variant, &subargs );
+    dbus_message_iter_close_container(args, &variant );
+}
+
+static void DBusSendUriSchemes(DBusMessageIter *args)
+{
+    DBusMessageIter variant, subargs;
+    dbus_message_iter_open_container(args, DBUS_TYPE_VARIANT, "as", &variant);
+        dbus_message_iter_open_container(&variant, DBUS_TYPE_ARRAY, DBUS_TYPE_STRING_AS_STRING, &subargs);
+            char *response[] = {"file"};
+            size_t i_len = sizeof( response ) / sizeof( *response );
+            for( size_t i = 0; i < i_len; ++i )
+            {
+                dbus_message_iter_append_basic(&subargs, DBUS_TYPE_STRING, &response[i]);
+            }
+        dbus_message_iter_close_container(&variant, &subargs );
+    dbus_message_iter_close_container(args, &variant );
+}
+
+static DBusHandlerResult DBusHandler(DBusConnection *connection, DBusMessage *message, void *user_data)
+{
+
+    //const char *interface_name = dbus_message_get_interface(message);
+    const char *member_name = dbus_message_get_member(message);
+    /*const char *path_name = dbus_message_get_path(message);
+
+    printf("Interface: %s\n", interface_name); */
+    printf("Member name: %s\n", member_name); 
+    /*printf("Path: %s\n", path_name); 
+    printf("Sender: %s\n", dbus_message_get_sender(message));*/
+
+    if(!dbus_message_has_path(message, DBUS_MPRIS_PATH))
+        return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+    
+    // Introspect response
+    if(dbus_message_is_method_call(message, DBUS_INTERFACE_INTROSPECTABLE, "Introspect"))
+    {
+        DBusReplyToIntrospect(connection, message);
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
+    //Respond to Get
+    else if (dbus_message_is_method_call(message, DBUS_INTERFACE_PROPERTIES, "Get"))
+    {
+        DBusError error;
+        char *interface_name = NULL;
+        char *property_name  = NULL;
+        DBusMessage *reply;
+     
+        dbus_error_init( &error );
+        dbus_message_get_args( message, &error,
+                DBUS_TYPE_STRING, &interface_name,
+                DBUS_TYPE_STRING, &property_name,
+                DBUS_TYPE_INVALID );
+    
+        if( dbus_error_is_set( &error ) )
+        {
+            printf("D-Bus message reading : %s",
+                                            error.message );
+            dbus_error_free( &error );
+            return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+        }
+
+        //printf("Interface name: %s\n", interface_name); 
+        //init reply
+        reply = dbus_message_new_method_return(message);
+
+        //printf("Property name: %s\n", property_name); 
+        
+        // Global Iterator
+        DBusMessageIter args;
+        dbus_message_iter_init_append(reply, &args);
+        
+        if(!strcmp(interface_name, DBUS_MPRIS_MEDIAPLAYER2))
+        {
+            if(!strcmp(property_name, "SupportedMimeTypes"))
+            {
+                DBusSendMimeTypes(&args);
+            }
+            else if(!strcmp(property_name, "SupportedUriSchemes"))
+            {
+                DBusSendUriSchemes(&args);
+            }
+            else if(!strcmp(property_name, "CanQuit"))
+            {
+                dbus_bool_t response = TRUE;
+                DBusReplyWithVariant(&args, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &response);
+            }
+            else if(!strcmp(property_name, "CanRaise"))
+            {
+                dbus_bool_t response = FALSE;
+                DBusReplyWithVariant(&args, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &response);
+            }
+            else if(!strcmp(property_name, "HasTrackList"))
+            {
+                dbus_bool_t response = FALSE;
+                DBusReplyWithVariant(&args, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &response);
+            }
+            else if(!strcmp(property_name, "DesktopEntry"))
+            {
+                char *response = "vgmplay";
+                DBusReplyWithVariant(&args, DBUS_TYPE_STRING, DBUS_TYPE_STRING_AS_STRING, &response);
+            }
+            else if(!strcmp(property_name, "Identity"))
+            {
+                char *response = "VGMPlay";
+                DBusReplyWithVariant(&args, DBUS_TYPE_STRING, DBUS_TYPE_STRING_AS_STRING, &response);
+            }
+            else
+                dbus_message_append_args(reply, DBUS_TYPE_INVALID);
+        }
+        else if(!strcmp(interface_name, "org.mpris.MediaPlayer2.Player"))
+        {
+            if(!strcmp(property_name, "CanPlay"))
+            {
+                dbus_bool_t response = TRUE;
+                DBusReplyWithVariant(&args, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &response);
+            } 
+            else if(!strcmp(property_name, "CanPause"))
+            {
+                dbus_bool_t response = TRUE;
+                DBusReplyWithVariant(&args, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &response);
+            } 
+            else if(!strcmp(property_name, "CanGoNext"))
+            {
+                dbus_bool_t response = FALSE;
+                if(PLMode == 0x01 && CurPLFile < PLFileCount)
+                    response = TRUE;
+                DBusReplyWithVariant(&args, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &response);
+            } 
+            else if(!strcmp(property_name, "CanGoPrevious"))
+            {
+                dbus_bool_t response = FALSE;
+                if(PLMode == 0x01/* && CurPLFile > 0x01 need to implement events first*/)
+                    response = TRUE;
+                DBusReplyWithVariant(&args, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &response);
+            } 
+            else if(!strcmp(property_name, "CanSeek"))
+            {
+                dbus_bool_t response = TRUE;
+                DBusReplyWithVariant(&args, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &response);
+            } 
+            else if(!strcmp(property_name, "PlaybackStatus"))
+            {
+                DBusSendPlaybackStatus(&args);
+            }
+            else if(!strcmp(property_name, "Position"))
+            {
+                int64_t response = ReturnPosMsec(VGMSmplPlayed, SampleRate);
+                DBusReplyWithVariant(&args, DBUS_TYPE_INT64, DBUS_TYPE_INT64_AS_STRING, &response);
+            }
+            //Dummy volume
+            else if(!strcmp(property_name, "Volume"))
+            {
+                double response = 1.0;
+                DBusReplyWithVariant(&args, DBUS_TYPE_DOUBLE, DBUS_TYPE_DOUBLE_AS_STRING, &response);
+
+            }
+            else if(!strcmp(property_name, "CanControl"))
+            {
+                dbus_bool_t response = TRUE;
+                DBusReplyWithVariant(&args, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &response);
+            }
+            else if(!strcmp(property_name, "Metadata"))
+            {
+                DBusSendMetadata(&args);
+            }
+            else
+                dbus_message_append_args(reply, DBUS_TYPE_INVALID);
+        }
+        else
+            return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+        
+        dbus_connection_send(connection, reply, NULL);
+        dbus_message_unref(reply);
+        
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
+    // Respond to GetAll 
+    else if (dbus_message_is_method_call(message, DBUS_INTERFACE_PROPERTIES, "GetAll"))
+    {
+        puts("GetAll called");
+        
+        DBusError error;
+        char *interface_name = NULL;
+        DBusMessage *reply;
+     
+        dbus_error_init(&error);
+        dbus_message_get_args(message, &error,
+            DBUS_TYPE_STRING, &interface_name,
+            DBUS_TYPE_INVALID );
+
+        if(dbus_error_is_set(&error))
+        {
+            printf("GetAll: %s\n", error.message);
+            dbus_error_free(&error);
+            return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+        }
+
+        //init reply
+        reply = dbus_message_new_method_return(message);
+
+        //printf("Property name: %s\n", property_name); 
+        
+        // Global Iterator
+        DBusMessageIter args;
+        dbus_message_iter_init_append(reply, &args);
+        
+        dbus_bool_t dbustrue = TRUE;
+        dbus_bool_t dbusfalse = FALSE;
+        
+        if(!strcmp(interface_name, "org.mpris.MediaPlayer2.Player"))
+        {
+            
+        }
+        else if (!strcmp(interface_name, "org.mpris.MediaPlayer2.Playlists"))
+        {
+            dbus_message_unref(reply);
+            return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+        }
+        dbus_connection_send(connection, reply, NULL);
+        dbus_message_unref(reply);
+
+        printf("%s\n", interface_name);
+
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
+    //Respond to Seek
+    else if (dbus_message_is_method_call(message, "org.mpris.MediaPlayer2.Player", "Seek"))
+    {
+        DBusError error;
+        int64_t offset = 0;
+     
+        dbus_error_init(&error);
+        dbus_message_get_args(message, &error,
+            DBUS_TYPE_INT64, &offset,
+            DBUS_TYPE_INVALID);
+
+        if(dbus_error_is_set(&error))
+        {
+            printf("GetAll: %s\n", error.message);
+            dbus_error_free(&error);
+            return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+        }
+        
+        printf("Seek called with %lld\n", (long long)offset);
+
+        INT32 TargetSeekPos = ReturnSamplePos(offset, SampleRate);
+        SeekVGM(true, TargetSeekPos);
+
+        DBusEmptyMethodResponse(connection, message);
+
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
+    //Respond to Play/PlayPause
+    else if (dbus_message_is_method_call(message, "org.mpris.MediaPlayer2.Player", "Play") || dbus_message_is_method_call(message, "org.mpris.MediaPlayer2.Player", "PlayPause"))
+    {
+        DBusEmptyMethodResponse(connection, message);
+        fprintf(stderr, "PlayPause() called!\n");
+        evtCallback(MMKEY_PLAY);
+        
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
+    //Respond to Previous
+    else if (dbus_message_is_method_call(message, "org.mpris.MediaPlayer2.Player", "Previous"))
+    {
+        evtCallback(MMKEY_PREV);
+
+        DBusEmptyMethodResponse(connection, message);
+
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
+    //Respond to Next
+    else if (dbus_message_is_method_call(message, "org.mpris.MediaPlayer2.Player", "Next"))
+    {
+        evtCallback(MMKEY_NEXT);
+        
+        DBusEmptyMethodResponse(connection, message);
+
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
+    else
+    {
+        return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+    }
+}
+
+UINT8 MultimediaKeyHook_Init(void)
+{
+    //DBusConnection *connection;
+    DBusError error;
+    DBusObjectPathVTable vtable;
+ 
+    dbus_threads_init_default();
+    
+    dbus_error_init(&error);
+    connection = dbus_bus_get(DBUS_BUS_SESSION, &error);
+    HandleError(&error);
+ 
+    dbus_bus_request_name(connection, "org.mpris.MediaPlayer2.vgmplay", 0, &error);
+    HandleError(&error);
+ 
+    vtable.message_function = DBusHandler;
+    vtable.unregister_function = NULL;
+
+    dbus_connection_try_register_object_path(connection,
+        "/org/mpris/MediaPlayer2",
+        &vtable,
+        NULL,
+        &error);
+    HandleError(&error);
+
+    pthread_t mainloop_thread;
+    pthread_create(&mainloop_thread, NULL, MainLoop, connection);
+    //pthread_detach(mainloop_thread);
+	return 0x00;
+}
+
+void MultimediaKeyHook_Deinit(void)
+{
+    //tell pthread to exit
+    //??? pass the dbus connection
+    runloop = 0;
+    /*if(mainloop_thread == NULL)
+        return;*/
+    
+    pthread_join(mainloop_thread, NULL);
+    dbus_connection_unref(connection);
+	return;
+}
+
+void MultimediaKeyHook_SetCallback(mmkey_cbfunc callbackFunc)
+{
+	evtCallback = callbackFunc;
+	
+	return;
+}
