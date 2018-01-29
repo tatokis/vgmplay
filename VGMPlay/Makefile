@@ -99,14 +99,12 @@ MAINFLAGS += -DDISABLE_HW_SUPPORT
 endif
 
 
-# -- General Compile Flags --
 ifeq ($(DEBUG), 0)
-CFLAGS := -O3 -g0 $(CFLAGS)
+# -- General Compile Flags --
+CFLAGS := -O3 -g0 -Wno-unused-variable -Wno-unused-value -Wno-unused-but-set-variable $(CFLAGS)
 else
-CFLAGS := -g $(CFLAGS)
+CFLAGS := -g -Wall $(CFLAGS)
 endif
-#CFLAGS += -Wall
-CFLAGS += -Wno-unused-variable -Wno-unused-value -Wno-unused-but-set-variable
 # libm (math library) and libz (zlib)
 LDFLAGS := -lm -lz $(LDFLAGS)
 
@@ -121,6 +119,9 @@ ifeq ($(MACOSX), 1)
 else
 # for Linux, add librt (clock stuff) and libpthread (threads)
 LDFLAGS += -lrt -lpthread -pthread
+#DBus
+CFLAGS += $(shell pkg-config --cflags dbus-1)
+LDFLAGS += $(shell pkg-config --libs dbus-1)
 endif
 MAINFLAGS += -pthread -DSHARE_PREFIX=\"$(PREFIX)\"
 endif
@@ -224,7 +225,8 @@ EMUOBJS = \
 	$(EMUOBJ)/ym2413hd.o \
 	$(EMUOBJ)/ym2413_opl.o
 VGMPLAY_OBJS = \
-	$(OBJ)/VGMPlayUI.o
+	$(OBJ)/VGMPlayUI.o \
+	$(OBJ)/mmkeys_gdbus.o
 VGM2PCM_OBJS = \
 	$(OBJ)/vgm2pcm.o
 VGM2WAV_OBJS = \
