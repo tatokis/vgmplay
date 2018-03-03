@@ -26,6 +26,9 @@ LDFLAGS=$(pkg-config --libs dbus-1)
 #include <errno.h>
 #include <locale.h>
 #include <wchar.h>
+#include <limits.h>
+
+#define MAX_PATH PATH_MAX
 
 // DBus MPRIS Constants
 #define DBUS_MPRIS_PATH "/org/mpris/MediaPlayer2"
@@ -59,6 +62,27 @@ static DBusConnection *connection;
 
 // Seek Function
 extern void SeekVGM(bool Relative, INT32 PlayBkSamples);
+
+// Filename
+extern char VgmFileName[MAX_PATH];
+
+static char *urlencode(char *str)
+{
+    // strlen("file://") + max str size + \0
+    char *newstring = malloc(7 + strlen(str) * 3 + 1);
+    char *loop = newstring;
+    loop += sprintf(loop, "%s", "file://");
+    for(size_t i = 0; i < strlen(str); i++)
+    {
+        // http://www.blooberry.com/indexdot/html/topics/urlencoding.htm
+        unsigned char c = (unsigned char)str[i];
+        if(c > 127 || c == 32 || c == 36 || c == 38 || c == 43 || c == 44 || c == 58 || c == 59 || c == 61 || c == 63 || c == 64)
+            loop += sprintf(loop, "%%%02X", c);
+        else
+            loop += sprintf(loop, "%c", str[i]);
+    }
+    return newstring;
+}
 
 // Return current position in μs
 static int64_t ReturnPosMsec(UINT32 SamplePos, UINT32 SmplRate)
@@ -151,9 +175,9 @@ static void DBusReplyToIntrospect(DBusConnection *connection, DBusMessage *reque
 "  <interface name=\"org.mpris.MediaPlayer2.Player\">\n"
 "    <property name=\"Metadata\" type=\"a{sv}\" access=\"read\" />\n"
 "    <property name=\"PlaybackStatus\" type=\"s\" access=\"read\" />\n"
-"    <property name=\"LoopStatus\" type=\"s\" access=\"readwrite\" />\n"
+//"    <property name=\"LoopStatus\" type=\"s\" access=\"readwrite\" />\n"
 "    <property name=\"Volume\" type=\"d\" access=\"readwrite\" />\n"
-"    <property name=\"Shuffle\" type=\"d\" access=\"readwrite\" />\n"
+//"    <property name=\"Shuffle\" type=\"d\" access=\"readwrite\" />\n"
 "    <property name=\"Position\" type=\"x\" access=\"read\" />\n"
 "    <property name=\"Rate\" type=\"d\" access=\"readwrite\" />\n"
 "    <property name=\"MinimumRate\" type=\"d\" access=\"readwrite\" />\n"
@@ -329,10 +353,11 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
         { "", DBUS_TYPE_STRING_AS_STRING, &genre, DBUS_TYPE_STRING, 0 },
     };
     
-    // More stubs
+    char *url = urlencode(VgmFileName);
+    
+    // Stubs
     char *trackid = "/org/mpris/MediaPlayer2/CurrentTrack";
     char *lastused = "2018-01-04T12:21:32Z";
-    char *url = "file:///home/tatokis/%CE%95%CF%80%CE%B9%CF%86%CE%AC%CE%BD%CE%B5%CE%B9%CE%B1%20%CE%B5%CF%81%CE%B3%CE%B1%CF%83%CE%AF%CE%B1%CF%82/VGM/Ys%20II%20Special/01%20The%20Morning%20Glow.vgz";
     char *arturl = "file:///home/tatokis/%CE%95%CF%80%CE%B9%CF%86%CE%AC%CE%BD%CE%B5%CE%B9%CE%B1%20%CE%B5%CF%81%CE%B3%CE%B1%CF%83%CE%AF%CE%B1%CF%82/VGM/Ys%20II%20Special/Ys%20II%20Special.png";
     int32_t discnum = 1;
     int32_t usecnt = 0;
@@ -360,6 +385,7 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
 
     DBusSendMetadataArray(dict_root, meta, DBUS_META_LEN);
 
+    free(url);
     free(utf8title);
     free(utf8album);
     free(utf8artist);
@@ -621,7 +647,7 @@ static DBusHandlerResult DBusHandler(DBusConnection *connection, DBusMessage *me
                 DBusReplyWithVariant(&args, DBUS_TYPE_INT64, DBUS_TYPE_INT64_AS_STRING, &response);
             }
             //Dummy volume
-            else if(!strcmp(property_name, "Volume"))
+            else if(!strcmp(property_name, "Volume") || !strcmp(property_name, "MaximumRate") || !strcmp(property_name, "MinimumRate") || !strcmp(property_name, "Rate"))
             {
                 double response = 1.0;
                 DBusReplyWithVariant(&args, DBUS_TYPE_DOUBLE, DBUS_TYPE_DOUBLE_AS_STRING, &response);
@@ -679,10 +705,175 @@ static DBusHandlerResult DBusHandler(DBusConnection *connection, DBusMessage *me
         
         dbus_bool_t dbustrue = TRUE;
         dbus_bool_t dbusfalse = FALSE;
-        
-        if(!strcmp(interface_name, "org.mpris.MediaPlayer2.Player"))
+        char *title;
+        char *strresponse;
+
+        if(!strcmp(interface_name, "org.mpris.MediaPlayer2"))
         {
+            // a{sv}
+            DBusMessageIter dict, dict_entry;
+            dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
             
+                // Open Dict
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "SupportedMimeTypes";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    DBusSendMimeTypes(&dict_entry);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+            
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "SupportedUriSchemes";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    DBusSendUriSchemes(&dict_entry);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "CanQuit";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &dbustrue);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "CanRaise";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &dbusfalse);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "HasTrackList";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &dbusfalse);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "DesktopEntry";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    strresponse = "vgmplay";
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_STRING, DBUS_TYPE_STRING_AS_STRING, &strresponse);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+                
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "Identity";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    strresponse = "VGMPlay";
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_STRING, DBUS_TYPE_STRING_AS_STRING, &strresponse);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+            dbus_message_iter_close_container(&args, &dict);
+        }
+        else if (!strcmp(interface_name, "org.mpris.MediaPlayer2.Player"))
+        {
+            dbus_bool_t boolresponse = FALSE;
+            double doubleresponse = 1.0;
+            // a{sv}
+            DBusMessageIter dict, dict_entry;
+            dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
+            
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "CanControl";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &dbustrue);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+            
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "CanGoNext";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    if(PLMode == 0x01 && CurPLFile < PLFileCount)
+                        boolresponse = TRUE;
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &boolresponse);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+                boolresponse = FALSE;
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "CanGoPrevious";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    if(PLMode == 0x01/* && CurPLFile > 0x01 need to implement events first*/)
+                        boolresponse = TRUE;
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &boolresponse);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "CanPause";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &dbustrue);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "CanPlay";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &dbustrue);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "CanSeek";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &dbustrue);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+                
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "Metadata";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                        DBusSendMetadata(&dict_entry);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "MaximumRate";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_DOUBLE, DBUS_TYPE_DOUBLE_AS_STRING, &doubleresponse);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "MinimumRate";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_DOUBLE, DBUS_TYPE_DOUBLE_AS_STRING, &doubleresponse);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "Rate";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_DOUBLE, DBUS_TYPE_DOUBLE_AS_STRING, &doubleresponse);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "Volume";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_DOUBLE, DBUS_TYPE_DOUBLE_AS_STRING, &doubleresponse);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "Position";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    int64_t position = ReturnPosMsec(VGMSmplPlayed, SampleRate);
+                    DBusReplyWithVariant(&dict_entry, DBUS_TYPE_INT64, DBUS_TYPE_INT64_AS_STRING, &position);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                    // Field Title
+                    title = "PlaybackStatus";
+                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    DBusSendPlaybackStatus(&dict_entry);
+                dbus_message_iter_close_container(&dict, &dict_entry);
+
+            dbus_message_iter_close_container(&args, &dict);
         }
         else if (!strcmp(interface_name, "org.mpris.MediaPlayer2.Playlists"))
         {
