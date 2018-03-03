@@ -70,7 +70,7 @@ void WaveOutLinuxCallBack(void);
 int main(int argc, char* argv[]);
 static void RemoveNewLines(char* String);
 static void RemoveQuotationMarks(char* String);
-static char* GetLastDirSeparator(const char* FilePath);
+char* GetLastDirSeparator(const char* FilePath);
 static bool IsAbsolutePath(const char* FilePath);
 static char* GetFileExtension(const char* FilePath);
 static void StandardizeDirSeparators(char* FilePath);
@@ -169,7 +169,7 @@ extern char* AppPaths[8];
 static char AppPathBuffer[MAX_PATH * 2];
 
 static char PLFileBase[MAX_PATH];
-static char PLFileName[MAX_PATH];
+char PLFileName[MAX_PATH];
 UINT32 PLFileCount;
 static char** PlayListFile;
 UINT32 CurPLFile;
@@ -669,7 +669,7 @@ static void RemoveQuotationMarks(char* String)
 	return;
 }
 
-static char* GetLastDirSeparator(const char* FilePath)
+char* GetLastDirSeparator(const char* FilePath)
 {
 	char* SepPos1;
 	char* SepPos2;
