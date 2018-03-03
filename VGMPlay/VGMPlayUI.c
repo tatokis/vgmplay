@@ -180,7 +180,7 @@ extern bool AutoStopSkip;
 
 static UINT8 lastMMEvent = 0x00;
 
-static char VgmFileName[MAX_PATH];
+char VgmFileName[MAX_PATH];
 static UINT8 FileMode;
 extern VGM_HEADER VGMHead;
 extern UINT32 VGMDataLen;
