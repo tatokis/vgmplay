@@ -418,7 +418,7 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
         {
             if(result.gl_pathc > 0)
             {
-                arturl = realloc(arturl, strlen(result.gl_pathv[0]));
+                arturl = realloc(arturl, strlen(result.gl_pathv[0]) + 1);
                 strcpy(arturl, result.gl_pathv[0]);
             }
             artfound = FileExists(arturl);
