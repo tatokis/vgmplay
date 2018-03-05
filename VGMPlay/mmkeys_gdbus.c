@@ -411,9 +411,9 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
         glob_t result;
         char *RetStr = GetLastDirSeparator(VgmFileName);
         size_t baselen = strlen(VgmFileName) - strlen(RetStr) + 1;
-        char globpath[baselen + 5];
+        char globpath[baselen + 14];
         snprintf(globpath, baselen + 1, "%s", VgmFileName);
-        strcat(globpath, "*.png");
+        strcat(globpath, "*.[pP][nN][gG]");
         if(glob(globpath, 0, NULL, &result) == 0)
         {
             if(result.gl_pathc > 0)
@@ -521,39 +521,53 @@ void DBusEmitSignal(UINT8 type)
         
         // Seeked() is a different signal
         // Return only if there are no other signals to be sent
-        if(type == SIGNAL_SEEK)
-            return;
+        //if(type == SIGNAL_SEEK)
+        //    return;
     }
-    
+
     msg = dbus_message_new_signal(DBUS_MPRIS_PATH, DBUS_PROPERTIES, "PropertiesChanged");
 
     dbus_message_iter_init_append(msg, &args);
+    // The interface in which the properties were changed must be sent first
+    // Thankfully the only properties changing are in the same interface
     char *player = DBUS_MPRIS_PLAYER;
     dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &player);
     // Wrap everything inside an a{sv}
     DBusMessageIter dict, dict_entry, second_entry;
 
-        dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict );
-            if(!!(type & SIGNAL_METADATA))
-            {
-                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
-                    // Field Title
-                    char *title = "Metadata";
-                    dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
-                        DBusSendMetadata(&dict_entry);
-                dbus_message_iter_close_container(&dict, &dict_entry);
-            }
-            if(!!(type & SIGNAL_PLAYSTATUS))
-            {
-                dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &second_entry);
-                    // Stub it
-                    char *playing = "PlaybackStatus";
-                    dbus_message_iter_append_basic(&second_entry, DBUS_TYPE_STRING, &playing);
-                    DBusSendPlaybackStatus(&second_entry);
+    dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict );
+        if(!!(type & SIGNAL_METADATA))
+        {
+            dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                // Field Title
+                char *title = "Metadata";
+                dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
+                    DBusSendMetadata(&dict_entry);
+            dbus_message_iter_close_container(&dict, &dict_entry);
+        }
+        if(!!(type & SIGNAL_PLAYSTATUS))
+        {
+            dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &second_entry);
+                // Stub it
+                char *playing = "PlaybackStatus";
+                dbus_message_iter_append_basic(&second_entry, DBUS_TYPE_STRING, &playing);
+                DBusSendPlaybackStatus(&second_entry);
 
-                dbus_message_iter_close_container(&dict, &second_entry);
-            }
-        dbus_message_iter_close_container(&args, &dict);
+            dbus_message_iter_close_container(&dict, &second_entry);
+        }
+        if(!!(type & SIGNAL_SEEK) || !!(type & SIGNAL_PLAYSTATUS))
+        {
+            dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &second_entry);
+                // Stub it
+                char *playing = "Position";
+                dbus_message_iter_append_basic(&second_entry, DBUS_TYPE_STRING, &playing);
+                int64_t response = ReturnPosMsec(VGMSmplPlayed, SampleRate);
+                DBusReplyWithVariant(&second_entry, DBUS_TYPE_INT64, DBUS_TYPE_INT64_AS_STRING, &response);
+
+            dbus_message_iter_close_container(&dict, &second_entry);
+        }
+
+    dbus_message_iter_close_container(&args, &dict);
 
     // We have no invalidated properties, so send a blank array
     DBusMessageIter invalidated;
@@ -756,7 +770,11 @@ static DBusHandlerResult DBusHandler(DBusConnection *connection, DBusMessage *me
                 dbus_message_append_args(reply, DBUS_TYPE_INVALID);
         }
         else
-            return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+        {
+            printf("NOT HANDLED %s\n", interface_name);
+            dbus_message_unref(reply);
+            reply = dbus_message_new_error(message, "org.freedesktop.DBus.Error.InvalidArgs", "No such interface");
+        }
         
         dbus_connection_send(connection, reply, NULL);
         dbus_message_unref(reply);
@@ -965,15 +983,20 @@ static DBusHandlerResult DBusHandler(DBusConnection *connection, DBusMessage *me
 
             dbus_message_iter_close_container(&args, &dict);
         }
-        else if (!strcmp(interface_name, "org.mpris.MediaPlayer2.Playlists"))
+        /*else if (!strcmp(interface_name, "org.mpris.MediaPlayer2.Playlists"))
         {
             dbus_message_unref(reply);
             return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+        }*/
+        else
+        {
+            printf("NOT HANDLED %s\n", interface_name);
+            dbus_message_unref(reply);
+            reply = dbus_message_new_error(message, "org.freedesktop.DBus.Error.InvalidArgs", "No such interface");
         }
+
         dbus_connection_send(connection, reply, NULL);
         dbus_message_unref(reply);
-
-        printf("%s\n", interface_name);
 
         return DBUS_HANDLER_RESULT_HANDLED;
     }
