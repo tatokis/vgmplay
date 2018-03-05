@@ -22,6 +22,7 @@
 #include <termios.h>
 #include <unistd.h>	// for STDIN_FILENO and usleep()
 #include <sys/time.h>	// for struct timeval in _kbhit()
+#include <signal.h> // for signal()
 
 #define	Sleep(msec)	usleep(msec * 1000)
 #define _vsnwprintf	vswprintf
@@ -217,6 +218,7 @@ extern bool ResetPBTimer;
 #ifndef WIN32
 static struct termios oldterm;
 static bool termmode;
+static volatile bool sigint = false;
 #endif
 
 UINT8 CmdList[0x100];
@@ -230,6 +232,15 @@ extern UINT32 Last95Freq;	// for optvgm debugging
 static bool PrintMSHours;
 
 extern void DBusEmitSignal(UINT8 type);
+
+#ifndef WIN32
+// SIGINT handler
+void signal_handler(int signal)
+{
+	if(signal == SIGINT)
+	    sigint = true;
+}
+#endif
 
 int main(int argc, char* argv[])
 {
@@ -253,6 +264,7 @@ int main(int argc, char* argv[])
 #ifndef WIN32
 	tcgetattr(STDIN_FILENO, &oldterm);
 	termmode = false;
+	signal(SIGINT, signal_handler);
 #endif
 	
 	if (argc > 1)
@@ -2236,6 +2248,15 @@ static void PlayVGM_UI(void)
 	OldLoopCount = 0;
 	while(! QuitPlay)
 	{
+
+#ifndef WIN32
+		if(sigint)
+		{
+			QuitPlay = true;
+			NextPLCmd = 0xFF;
+		}
+#endif
+
 		if (! PausePlay || PosPrint)
 		{
 			// Dirty hack to detect loops
