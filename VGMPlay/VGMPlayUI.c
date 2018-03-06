@@ -566,7 +566,6 @@ int main(int argc, char* argv[])
 			NextPLCmd = 0x00;
 			PlayVGM_UI();
 			CloseVGMFile();
-			
 			if (ErrorHappened)
 			{
 				if (_kbhit())
@@ -2116,7 +2115,7 @@ static void PlayVGM_UI(void)
 	printf("Initializing ...\r");
 	
 	PlayVGM();
-	
+	DBusEmitSignal(SIGNAL_SEEK | SIGNAL_METADATA | SIGNAL_PLAYSTATUS | SIGNAL_CONTROLS);
 	/*switch(LogToWave)
 	{
 	case 0x00:
@@ -2499,7 +2498,6 @@ static void PlayVGM_UI(void)
 				case 0x49:	// Page Up
 					if (PLFileCount && /*! NextPLCmd &&*/ CurPLFile)
 					{
-						DBusEmitSignal(SIGNAL_SEEK | SIGNAL_METADATA | SIGNAL_PLAYSTATUS);
 						NextPLCmd = 0x01;
 						QuitPlay = true;
 					}
@@ -2508,7 +2506,6 @@ static void PlayVGM_UI(void)
 				case 0x51:	// Page Down
 					if (PLFileCount && /*! NextPLCmd &&*/ CurPLFile < PLFileCount - 0x01)
 					{
-						DBusEmitSignal(SIGNAL_SEEK | SIGNAL_METADATA | SIGNAL_PLAYSTATUS);
 						NextPLCmd = 0x00;
 						QuitPlay = true;
 					}
@@ -2549,7 +2546,6 @@ static void PlayVGM_UI(void)
 			case 'B':	// Previous file (Back)
 				if (PLFileCount && /*! NextPLCmd &&*/ CurPLFile)
 				{
-					DBusEmitSignal(SIGNAL_SEEK | SIGNAL_METADATA | SIGNAL_PLAYSTATUS);
 					NextPLCmd = 0x01;
 					QuitPlay = true;
 				}
@@ -2557,7 +2553,6 @@ static void PlayVGM_UI(void)
 			case 'N':	// Next file
 				if (PLFileCount && /*! NextPLCmd &&*/ CurPLFile < PLFileCount - 0x01)
 				{
-					DBusEmitSignal(SIGNAL_SEEK | SIGNAL_METADATA | SIGNAL_PLAYSTATUS);
 					NextPLCmd = 0x00;
 					QuitPlay = true;
 				}
