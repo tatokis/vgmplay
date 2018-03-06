@@ -28,6 +28,7 @@ LDFLAGS=$(pkg-config --libs dbus-1)
 #include <wchar.h>
 #include <limits.h>
 #include <glob.h>
+#include "VGMPlay_Intf.h"
 
 #define MAX_PATH PATH_MAX
 
@@ -38,6 +39,9 @@ LDFLAGS=$(pkg-config --libs dbus-1)
 #define DBUS_PROPERTIES "org.freedesktop.DBus.Properties"
 
 //#define DBUS_DEBUG
+
+// TODO: Fix this
+#define CHIP_COUNT 0x29
 
 static mmkey_cbfunc evtCallback = NULL;
 static pthread_t mainloop_thread = 0;
@@ -313,7 +317,6 @@ static void DBusReplyWithVariant(DBusMessageIter *args, int type, char *type_as_
 
 void DBusAppendCanGoNext(DBusMessageIter *args)
 {
-    printf("\nCUR 0x%x; CNT 0x%x\n", CurPLFile, PLFileCount);
     dbus_bool_t response = FALSE;
     if(PLMode == 0x01)
         if(CurPLFile < PLFileCount - 1)
@@ -384,53 +387,48 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
         return;
     }
     // Prepare metadata
+
+    // Album
     wchar_t *album = GetTagStrEJ(VGMTag.strGameNameE, VGMTag.strGameNameJ);
     char *utf8album = wcharToUTF8(album);
 
+    // Title
     wchar_t *title =  GetTagStrEJ(VGMTag.strTrackNameE, VGMTag.strTrackNameJ);
     char *utf8title = wcharToUTF8(title);
 
+    // Length
     int64_t len64 = 0;
     VGMPbSmplCount = SampleVGM2Playback(VGMHead.lngTotalSamples);
     len64 = ReturnPosMsec(VGMPbSmplCount, SampleRate);
 
-    wchar_t *artist =  GetTagStrEJ(VGMTag.strAuthorNameE, VGMTag.strAuthorNameJ);
+    // Artist
+    wchar_t *artist = GetTagStrEJ(VGMTag.strAuthorNameE, VGMTag.strAuthorNameJ);
     char *utf8artist = wcharToUTF8(artist);
 
+    // Track Number in playlist
     int32_t tracknum = 0;
     if(PLMode == 0x01)
         tracknum = (int32_t)(CurPLFile + 0x01);
-            
-    struct DBusMetadata dbusartist[1] = 
-    {
-        { "", DBUS_TYPE_STRING_AS_STRING, &utf8artist, DBUS_TYPE_STRING, 0 },
-    };
-
-    char *genre = "Video Game Music";
-    struct DBusMetadata dbusgenre[1] = 
-    {
-        { "", DBUS_TYPE_STRING_AS_STRING, &genre, DBUS_TYPE_STRING, 0 },
-    };
-    
-    char *url = urlencode(VgmFileName);
     
     // Try and get the cover art url
     char *arturl = NULL;
     bool artfound = false;
 
+    // If we are reading a playlist, replace its m3u extension with .png
     if(PLMode == 0x01)
     {
         size_t urlsize = strlen(PLFileName);
         arturl = malloc(urlsize + 1);
-        // Replace m3u with png
+        // Replace last three chars with png
         snprintf(arturl, urlsize - 2, "%s", PLFileName);
         strcat(arturl, "png");
         artfound = FileExists(arturl);
     }
 
+    // If we got nothing from the playlist, or we are in single file mode
+    // Get the base path and append [Game].png
     if(!artfound)
     {
-        // Get base path and append Game.png
         char *RetStr = GetLastDirSeparator(VgmFileName);
         size_t baselen = strlen(VgmFileName) - strlen(RetStr) + 1;
         size_t albumlen = strlen(utf8album);
@@ -441,15 +439,16 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
         artfound = FileExists(arturl);
     }
 
+    // As a last resort, if we still got nothing from the above
+    // Grab the first png inside the base path
     if(!artfound)
     {
-        // Grab the first png inside the base path
         glob_t result;
         char *RetStr = GetLastDirSeparator(VgmFileName);
         size_t baselen = strlen(VgmFileName) - strlen(RetStr) + 1;
         char globpath[baselen + 14];
         snprintf(globpath, baselen + 1, "%s", VgmFileName);
-        strcat(globpath, "*.[pP][nN][gG]");
+        strcat(globpath, "*.[pP][nN][gG]"); // Case insensitive extension
         if(glob(globpath, 0, NULL, &result) == 0)
         {
             if(result.gl_pathc > 0)
@@ -462,6 +461,9 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
         globfree(&result);
     }
 
+    // Give up and return an empty string
+    // The last malloc should allocate more than one byte, so we should be safe
+    // (Famous last words before segfaulting)
     if(!artfound)
         arturl[0] = '\0';
 
@@ -469,7 +471,93 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
     puts(arturl);
 #endif
 
+    // URL encode the path to the png
     char *arturlescaped = urlencode(arturl);
+
+    // Game release date
+    wchar_t *release = VGMTag.strReleaseDate;
+    char *utf8release = wcharToUTF8(release);
+
+    // VGM File Creator
+    wchar_t *creator = VGMTag.strCreator;
+    char *utf8creator = wcharToUTF8(creator);
+
+    // Notes
+    wchar_t *notes = VGMTag.strNotes;
+    char *utf8notes = wcharToUTF8(notes);
+
+    // System
+    wchar_t *system = GetTagStrEJ(VGMTag.strSystemNameE, VGMTag.strSystemNameJ);
+    char *utf8system = wcharToUTF8(system);
+
+    // VGM File version
+    uint32_t version = VGMHead.lngVersion;
+
+    // Loop point
+    int64_t loop = ReturnPosMsec(VGMHead.lngLoopSamples, SampleRate);
+
+    if(!strlen(utf8artist))
+    {
+        utf8artist = realloc(utf8artist, strlen(utf8album) + 1);
+        strcpy(utf8artist, utf8album);
+    }
+
+    // Encapsulate some data in DBusMetadata Arrays
+    // Artist Array
+    struct DBusMetadata dbusartist[1] =
+    {
+        { "", DBUS_TYPE_STRING_AS_STRING, &utf8artist, DBUS_TYPE_STRING, 0 },
+    };
+
+    // Genre Array
+    char *genre = "Video Game Music";
+    struct DBusMetadata dbusgenre[1] =
+    {
+        { "", DBUS_TYPE_STRING_AS_STRING, &genre, DBUS_TYPE_STRING, 0 },
+    };
+
+    struct DBusMetadata chips[CHIP_COUNT] = { 0 };
+    size_t chipslen = 0;
+    // Generate chips array
+    for (UINT8 CurChip = 0x00; CurChip < CHIP_COUNT; CurChip ++)
+    {
+        UINT8 ChpType;
+        UINT32 ChpClk = GetChipClock(&VGMHead, CurChip, &ChpType);
+
+        if (ChpClk && GetChipClock(&VGMHead, 0x80 | CurChip, NULL))
+            ChpClk |= 0x40000000;
+
+        if(!!ChpClk)
+        {
+            if (CurChip == 0x00 && (ChpClk & 0x80000000))
+                ChpClk &= ~0x40000000;
+            if (ChpClk & 0x80000000)
+            {
+                ChpClk &= ~0x80000000;
+                CurChip |= 0x80;
+            }
+            const char *chip = GetAccurateChipName(CurChip, ChpType);
+            // Because you need to malloc() the malloc()
+            chips[chipslen].content = malloc(sizeof(char*));
+            *(char **)chips[chipslen].content = strdup(chip);
+            // Set the type
+            chips[chipslen].dbusType = DBUS_TYPE_STRING_AS_STRING;
+            chips[chipslen].contentType = DBUS_TYPE_STRING;
+
+            // Duplicate the chip if necessasry
+            if (ChpClk & 0x40000000)
+            {
+                chipslen++;
+                chips[chipslen].content = chips[chipslen - 1].content;
+                chips[chipslen].dbusType = DBUS_TYPE_STRING_AS_STRING;
+                chips[chipslen].contentType = DBUS_TYPE_STRING;
+            }
+            chipslen++;
+        }
+    }
+
+    // URL encoded Filename
+    char *url = urlencode(VgmFileName);
 
     // Stubs
     char *trackid = "/org/mpris/MediaPlayer2/CurrentTrack";
@@ -494,18 +582,42 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
         { "xesam:discNumber", DBUS_TYPE_INT32_AS_STRING, &discnum, DBUS_TYPE_INT32, 1 },
         { "xesam:useCount", DBUS_TYPE_INT32_AS_STRING, &usecnt, DBUS_TYPE_INT32, 1 },
         { "xesam:userRating", DBUS_TYPE_DOUBLE_AS_STRING, &userrating, DBUS_TYPE_DOUBLE, 1 },
-
+        // Extra non-xesam/mpris entries
+        { "vgm:release", DBUS_TYPE_STRING_AS_STRING, &utf8release, DBUS_TYPE_STRING, 0 },
+        { "vgm:creator", DBUS_TYPE_STRING_AS_STRING, &utf8creator, DBUS_TYPE_STRING, 0 },
+        { "vgm:notes", DBUS_TYPE_STRING_AS_STRING, &utf8notes, DBUS_TYPE_STRING, 0 },
+        { "vgm:system", DBUS_TYPE_STRING_AS_STRING, &utf8system, DBUS_TYPE_STRING, 0 },
+        { "vgm:version", DBUS_TYPE_UINT32_AS_STRING, &version, DBUS_TYPE_UINT32, 0 },
+        /*{ "vgm:gain", DBUS_TYPE_STRING_AS_STRING, &gain, DBUS_TYPE_STRING, 0 }, //*/
+        { "vgm:loop", DBUS_TYPE_INT64_AS_STRING, &loop, DBUS_TYPE_INT64, 0 }, //
+        { "vgm:chips", "as", &chips, DBUS_TYPE_ARRAY, chipslen },
     };
     #define DBUS_META_LEN sizeof(meta) / sizeof(*meta)
 
     DBusSendMetadataArray(dict_root, meta, DBUS_META_LEN);
 
+    // Free everything
     free(arturl);
     free(arturlescaped);
     free(url);
     free(utf8title);
     free(utf8album);
     free(utf8artist);
+    free(utf8release);
+    free(utf8creator);
+    free(utf8notes);
+    free(utf8system);
+    for(size_t i = 0; i < chipslen; i++)
+    {
+        // If the next pointer is the same as the current one, don't free it.
+        char **ptr = chips[i].content;
+        if(ptr == chips[i+1].content)
+            continue;
+        char *ch = *ptr;
+        free(ptr);
+        free(ch);
+    }
+
 }
 
 static void DBusSendPlaybackStatus(DBusMessageIter *args)
