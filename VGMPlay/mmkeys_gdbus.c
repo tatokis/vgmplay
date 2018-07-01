@@ -19,10 +19,10 @@ LDFLAGS=$(pkg-config --libs dbus-1)
 #include <unistd.h>
 #include <dbus/dbus.h>
 #include <pthread.h>
-#include "chips/mamedef.h"    // for UINT8
+#include "chips/mamedef.h" // for UINT8
 #include "mmkeys.h"
 #include "stdbool.h"
-#include "VGMFile.h"
+#include "VGMPlay.h" // For VGMFile.h and CHIP_COUNT
 #include <errno.h>
 #include <locale.h>
 #include <wchar.h>
@@ -39,9 +39,6 @@ LDFLAGS=$(pkg-config --libs dbus-1)
 #define DBUS_PROPERTIES "org.freedesktop.DBus.Properties"
 
 //#define DBUS_DEBUG
-
-// TODO: Fix this
-#define CHIP_COUNT 0x29
 
 static mmkey_cbfunc evtCallback = NULL;
 static pthread_t mainloop_thread = 0;
@@ -88,7 +85,6 @@ typedef struct DBusMetadata
     size_t childLen;
 } DBusMetadata;
 
-
 // Misc Helper Functions
 
 static char *wcharToUTF8(wchar_t *GD3)
@@ -113,10 +109,30 @@ static char *urlencode(char *str)
     {
         // http://www.blooberry.com/indexdot/html/topics/urlencoding.htm
         unsigned char c = (unsigned char)str[i];
-        if(c > 127 || c == 32 || c == 36 || c == 38 || c == 43 || c == 44 || c == 58 || c == 59 || c == 61 || c == 63 || c == 64)
+        switch(c)
+        {
+            case 32:
+            case 36:
+            case 38:
+            case 43:
+            case 44:
+            case 58:
+            case 59:
+            case 61:
+            case 63:
+            case 64:
+                loop += sprintf(loop, "%%%02X", c);
+                break;
+            default:
+                if(c > 127)
+                    loop += sprintf(loop, "%%%02X", c);
+                else
+                   loop += sprintf(loop, "%c", str[i]);
+        }
+       /* if(c > 127 || c == 32 || c == 36 || c == 38 || c == 43 || c == 44 || c == 58 || c == 59 || c == 61 || c == 63 || c == 64)
             loop += sprintf(loop, "%%%02X", c);
         else
-            loop += sprintf(loop, "%c", str[i]);
+            loop += sprintf(loop, "%c", str[i]);*/
     }
     return newstring;
 }
@@ -413,29 +429,58 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
     // Try and get the cover art url
     char *arturl = NULL;
     bool artfound = false;
+    char cwd[1024] = { 0 };
+    size_t cwdlen = 0;
+
+    // Check if the path we got from vgmplay is absolute
+    // If not, get and prepend the cwd
+    if(!(GetLastDirSeparator(PLFileName) || GetLastDirSeparator(VgmFileName)))
+    {
+        getcwd(cwd, sizeof(cwd));
+        if(strlen(cwd) < 1023)
+            strcat(cwd, "/");
+        cwdlen = strlen(cwd);
+    }
 
     // If we are reading a playlist, replace its m3u extension with .png
     if(PLMode == 0x01)
     {
         size_t urlsize = strlen(PLFileName);
-        arturl = malloc(urlsize + 1);
+        arturl = malloc(cwdlen + urlsize + 1);
         // Replace last three chars with png
-        snprintf(arturl, urlsize - 2, "%s", PLFileName);
+        snprintf(arturl, urlsize + cwdlen - 2, "%s%s", cwd, PLFileName);
         strcat(arturl, "png");
+#ifdef DBUS_DEBUG
+            printf("Trying %s\n", arturl);
+#endif
         artfound = FileExists(arturl);
     }
 
     // If we got nothing from the playlist, or we are in single file mode
     // Get the base path and append [Game].png
+    // FIXME clean up
     if(!artfound)
     {
         char *RetStr = GetLastDirSeparator(VgmFileName);
-        size_t baselen = strlen(VgmFileName) - strlen(RetStr) + 1;
+        size_t RetStrLen = 0;
         size_t albumlen = strlen(utf8album);
-        arturl = realloc(arturl, baselen + albumlen + 5);
-        snprintf(arturl, baselen + 1, "%s", VgmFileName);
+        if(RetStr)
+        {
+            RetStrLen = strlen(RetStr);
+            size_t baselen = strlen(VgmFileName) - RetStrLen + 1;
+            arturl = realloc(arturl, baselen + albumlen + 5);
+            snprintf(arturl, baselen + 1, "%s", VgmFileName);
+        }
+        else
+        {
+            arturl = realloc(arturl, cwdlen + albumlen + 5);
+            snprintf(arturl, cwdlen + 1, "%s", cwd);
+        }
         strcat(arturl, utf8album);
         strcat(arturl, ".png");
+#ifdef DBUS_DEBUG
+            printf("Trying %s\n", arturl);
+#endif
         artfound = FileExists(arturl);
     }
 
@@ -445,10 +490,20 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
     {
         glob_t result;
         char *RetStr = GetLastDirSeparator(VgmFileName);
-        size_t baselen = strlen(VgmFileName) - strlen(RetStr) + 1;
+        size_t baselen = 1 + (RetStr ? (strlen(VgmFileName) - strlen(RetStr) + 1) : cwdlen);
+
         char globpath[baselen + 14];
-        snprintf(globpath, baselen + 1, "%s", VgmFileName);
+        memset(globpath, 0, sizeof(globpath));
+
+        if(RetStr)
+            snprintf(globpath, baselen, "%s", VgmFileName);
+        else
+            snprintf(globpath, baselen, "%s", cwd);
+
         strcat(globpath, "*.[pP][nN][gG]"); // Case insensitive extension
+#ifdef DBUS_DEBUG
+        printf("Using glob %s\n", globpath);
+#endif
         if(glob(globpath, 0, NULL, &result) == 0)
         {
             if(result.gl_pathc > 0)
@@ -456,6 +511,9 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
                 arturl = realloc(arturl, strlen(result.gl_pathv[0]) + 1);
                 strcpy(arturl, result.gl_pathv[0]);
             }
+#ifdef DBUS_DEBUG
+            printf("Trying %s\n", arturl);
+#endif
             artfound = FileExists(arturl);
         }
         globfree(&result);
@@ -527,7 +585,7 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
         if (ChpClk && GetChipClock(&VGMHead, 0x80 | CurChip, NULL))
             ChpClk |= 0x40000000;
 
-        if(!!ChpClk)
+        if(ChpClk)
         {
             if (CurChip == 0x00 && (ChpClk & 0x80000000))
                 ChpClk &= ~0x40000000;
@@ -559,6 +617,9 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
     // URL encoded Filename
     char *url = urlencode(VgmFileName);
 
+    // Gain
+    // pow(2.0, VolMod / (double)0x20)
+
     // Stubs
     char *trackid = "/org/mpris/MediaPlayer2/CurrentTrack";
     char *lastused = "2018-01-04T12:21:32Z";
@@ -588,8 +649,8 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
         { "vgm:notes", DBUS_TYPE_STRING_AS_STRING, &utf8notes, DBUS_TYPE_STRING, 0 },
         { "vgm:system", DBUS_TYPE_STRING_AS_STRING, &utf8system, DBUS_TYPE_STRING, 0 },
         { "vgm:version", DBUS_TYPE_UINT32_AS_STRING, &version, DBUS_TYPE_UINT32, 0 },
-        /*{ "vgm:gain", DBUS_TYPE_STRING_AS_STRING, &gain, DBUS_TYPE_STRING, 0 }, //*/
-        { "vgm:loop", DBUS_TYPE_INT64_AS_STRING, &loop, DBUS_TYPE_INT64, 0 }, //
+        /*{ "vgm:gain", DBUS_TYPE_STRING_AS_STRING, &gain, DBUS_TYPE_STRING, 0 },*/
+        { "vgm:loop", DBUS_TYPE_INT64_AS_STRING, &loop, DBUS_TYPE_INT64, 0 },
         { "vgm:chips", "as", &chips, DBUS_TYPE_ARRAY, chipslen },
     };
     #define DBUS_META_LEN sizeof(meta) / sizeof(*meta)
@@ -647,7 +708,7 @@ void DBusEmitSignal(UINT8 type)
     DBusMessage *msg;
     DBusMessageIter args;
 
-    if(!!(type & SIGNAL_SEEK))
+    if(type & SIGNAL_SEEK)
     {              
         msg = dbus_message_new_signal(DBUS_MPRIS_PATH, DBUS_MPRIS_PLAYER, "Seeked");
         if (NULL == msg)
@@ -668,7 +729,6 @@ void DBusEmitSignal(UINT8 type)
             fprintf(stderr, "Out Of Memory!\n"); 
             exit(1);
         }
-        
 
         dbus_message_unref(msg);
         
@@ -688,7 +748,7 @@ void DBusEmitSignal(UINT8 type)
     DBusMessageIter dict, dict_entry;
 
     dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict );
-        if(!!(type & SIGNAL_METADATA))
+        if(type & SIGNAL_METADATA)
         {
             dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
                 char *title = "Metadata";
@@ -696,7 +756,7 @@ void DBusEmitSignal(UINT8 type)
                     DBusSendMetadata(&dict_entry);
             dbus_message_iter_close_container(&dict, &dict_entry);
         }
-        if(!!(type & SIGNAL_CONTROLS))
+        if(type & SIGNAL_CONTROLS)
         {
             dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
                 char *title = "CanGoPrevious";
@@ -709,7 +769,7 @@ void DBusEmitSignal(UINT8 type)
                 DBusAppendCanGoNext(&dict_entry);
             dbus_message_iter_close_container(&dict, &dict_entry);
         }
-        if(!!(type & SIGNAL_PLAYSTATUS))
+        if(type & SIGNAL_PLAYSTATUS)
         {
             dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
                 char *playing = "PlaybackStatus";
@@ -718,7 +778,7 @@ void DBusEmitSignal(UINT8 type)
 
             dbus_message_iter_close_container(&dict, &dict_entry);
         }
-        if(!!(type & SIGNAL_SEEK) || !!(type & SIGNAL_PLAYSTATUS))
+        if((type & SIGNAL_SEEK) || (type & SIGNAL_PLAYSTATUS))
         {
             dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
                 char *playing = "Position";
