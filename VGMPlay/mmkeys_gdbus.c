@@ -163,7 +163,7 @@ static void *MainLoop(void *conn)
 {
     while(runloop)
     {
-        dbus_connection_read_write_dispatch(conn, 1000);
+        dbus_connection_read_write_dispatch(conn, 200);
     }
     //dbus_connection_unref(conn);
     //pthread_exit(0);
