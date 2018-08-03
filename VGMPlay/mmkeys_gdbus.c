@@ -8,6 +8,8 @@ libdbus-1-dev
 compiling:
 CFLAGS=$(pkg-config --cflags dbus-1)
 LDFLAGS=$(pkg-config --libs dbus-1)
+
+They weren't lying when they said that using libdbus directly signs you up for some pain...
 */
 
 #include <stdio.h>
