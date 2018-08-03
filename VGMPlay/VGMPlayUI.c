@@ -2279,7 +2279,7 @@ static void PlayVGM_UI(void)
 		if (! PausePlay || PosPrint)
 		{
 			// Dirty hack to detect loops
-			if(OldLoopCount < VGMCurLoop)
+			if(OldLoopCount <= VGMCurLoop)
 			{
 				OldLoopCount = VGMCurLoop + 1;
 				DBusEmitSignal(SIGNAL_SEEK);
