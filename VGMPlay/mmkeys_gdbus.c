@@ -436,7 +436,8 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
     // If not, get and prepend the cwd
     if(!(GetLastDirSeparator(PLFileName) || GetLastDirSeparator(VgmFileName)))
     {
-        getcwd(cwd, sizeof(cwd));
+        if(!getcwd(cwd, sizeof(cwd)))
+            strcpy(cwd, "/");
         if(strlen(cwd) < 1023)
             strcat(cwd, "/");
         cwdlen = strlen(cwd);
@@ -1230,6 +1231,9 @@ static DBusHandlerResult DBusHandler(DBusConnection *connection, DBusMessage *me
         SeekVGM(true, TargetSeekPos);
 
         DBusEmptyMethodResponse(connection, message);
+
+        // Emit seeked signal
+        DBusEmitSignal(SIGNAL_SEEK);
 
         return DBUS_HANDLER_RESULT_HANDLED;
     }
