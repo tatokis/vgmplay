@@ -50,7 +50,7 @@ INT32 VGMPbSmplCount;
 extern INT32 VGMSmplPlayed;
 extern UINT32 SampleRate;
 extern GD3_TAG VGMTag;
-extern wchar_t *GetTagStrEJ(const wchar_t* EngTag, const wchar_t* JapTag);
+extern wchar_t* GetTagStrEJ(const wchar_t* EngTag, const wchar_t* JapTag);
 extern INT32 SampleVGM2Playback(INT32 SampleVal);
 extern VGM_HEADER VGMHead;
 
@@ -67,7 +67,7 @@ extern UINT8 PlayingMode;
 extern bool PausePlay;
 
 // Sigh
-static DBusConnection *connection;
+static DBusConnection* connection;
 
 // Seek Function
 extern void SeekVGM(bool Relative, INT32 PlayBkSamples);
@@ -75,37 +75,37 @@ extern void SeekVGM(bool Relative, INT32 PlayBkSamples);
 // Filename
 extern char VgmFileName[MAX_PATH];
 
-extern char *GetLastDirSeparator(const char *FilePath);
+extern char* GetLastDirSeparator(const char* FilePath);
 
 // MPRIS Metadata Struct
 typedef struct DBusMetadata
 {
-    void *title;
-    char *dbusType;
-    void *content;
+    void* title;
+    char* dbusType;
+    void* content;
     int contentType;
     size_t childLen;
 } DBusMetadata;
 
 // Misc Helper Functions
 
-static char *wcharToUTF8(wchar_t *GD3)
+static char* wcharToUTF8(wchar_t* GD3)
 {
     size_t len = wcstombs(NULL, GD3, 0) + 1;
-    char *out = malloc(len);
+    char* out = malloc(len);
     wcstombs(out, GD3, len);
     return out;
 }
 
-static char *urlencode(char *str)
+static char* urlencode(char* str)
 {
     // Don't try to encode blank strings
     if(!strlen(str))
         return calloc(1, sizeof(char));
 
     // strlen("file://") + max str size + \0
-    char *newstring = malloc(7 + strlen(str) * 3 + 1);
-    char *loop = newstring;
+    char* newstring = malloc(7 + strlen(str)*  3 + 1);
+    char* loop = newstring;
     loop += sprintf(loop, "%s", "file://");
     for(size_t i = 0; i < strlen(str); i++)
     {
@@ -161,7 +161,7 @@ static bool FileExists(char* file)
 }
 
 // Main Loop
-static void *MainLoop(void *conn)
+static void* MainLoop(void* conn)
 {
     while(runloop)
     {
@@ -174,7 +174,7 @@ static void *MainLoop(void *conn)
 
 // DBus Helper Functions
 
-static void HandleError(DBusError *error)
+static void HandleError(DBusError* error)
 {
     if (dbus_error_is_set(error))
     {
@@ -182,9 +182,9 @@ static void HandleError(DBusError *error)
     }
 }
 
-static void DBusEmptyMethodResponse(DBusConnection *connection, DBusMessage *request)
+static void DBusEmptyMethodResponse(DBusConnection* connection, DBusMessage* request)
 {
-    DBusMessage *reply;
+    DBusMessage* reply;
     //DBusError error;
 
     reply = dbus_message_new_method_return(request);
@@ -193,11 +193,11 @@ static void DBusEmptyMethodResponse(DBusConnection *connection, DBusMessage *req
     dbus_message_unref(reply);
 }
 
-static void DBusReplyToIntrospect(DBusConnection *connection, DBusMessage *request)
+static void DBusReplyToIntrospect(DBusConnection* connection, DBusMessage* request)
 {
-    DBusMessage *reply;
+    DBusMessage* reply;
  
-    const char *introspection_data =
+    const char* introspection_data =
 "<!DOCTYPE node PUBLIC \"-//freedesktop//DTD D-BUS Object Introspection 1.0//EN\"\n"
 "\"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\n"
 "<node>\n"
@@ -325,7 +325,7 @@ static void DBusReplyToIntrospect(DBusConnection *connection, DBusMessage *reque
     dbus_message_unref(reply);
 }
 
-static void DBusReplyWithVariant(DBusMessageIter *args, int type, char *type_as_string, void *response)
+static void DBusReplyWithVariant(DBusMessageIter* args, int type, char* type_as_string, void* response)
 {
     DBusMessageIter subargs;
     dbus_message_iter_open_container(args, DBUS_TYPE_VARIANT, type_as_string, &subargs);
@@ -333,7 +333,7 @@ static void DBusReplyWithVariant(DBusMessageIter *args, int type, char *type_as_
     dbus_message_iter_close_container(args, &subargs);
 }
 
-void DBusAppendCanGoNext(DBusMessageIter *args)
+void DBusAppendCanGoNext(DBusMessageIter* args)
 {
     dbus_bool_t response = FALSE;
     if(PLMode == 0x01)
@@ -342,7 +342,7 @@ void DBusAppendCanGoNext(DBusMessageIter *args)
     DBusReplyWithVariant(args, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &response);
 }
 
-void DBusAppendCanGoPrevious(DBusMessageIter *args)
+void DBusAppendCanGoPrevious(DBusMessageIter* args)
 {
     dbus_bool_t response = FALSE;
     if(PLMode == 0x01)
@@ -351,7 +351,7 @@ void DBusAppendCanGoPrevious(DBusMessageIter *args)
     DBusReplyWithVariant(args, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &response);
 }
 
-static void DBusSendMetadataArray(DBusMessageIter *dict_root, DBusMetadata meta[], size_t dbus_meta_array_len)
+static void DBusSendMetadataArray(DBusMessageIter* dict_root, DBusMetadata meta[], size_t dbus_meta_array_len)
 {
     DBusMessageIter root_variant, dict, dict_entry, variant;
 
@@ -378,7 +378,7 @@ static void DBusSendMetadataArray(DBusMessageIter *dict_root, DBusMetadata meta[
 
                                 for(size_t len = 0; len < meta[i].childLen; len++)
                                 {
-                                    DBusMetadata *chad = meta[i].content;
+                                    DBusMetadata* chad = meta[i].content;
                                     dbus_message_iter_append_basic(&array_root, chad[len].contentType, chad[len].content);
                                 }
 
@@ -396,7 +396,7 @@ static void DBusSendMetadataArray(DBusMessageIter *dict_root, DBusMetadata meta[
     dbus_message_iter_close_container(dict_root, &root_variant);
 }
 
-static void DBusSendMetadata(DBusMessageIter *dict_root)
+static void DBusSendMetadata(DBusMessageIter* dict_root)
 {
     // Send an empty array in a variant if nothing is playing
     if(PlayingMode == 0xFF)
@@ -407,12 +407,12 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
     // Prepare metadata
 
     // Album
-    wchar_t *album = GetTagStrEJ(VGMTag.strGameNameE, VGMTag.strGameNameJ);
-    char *utf8album = wcharToUTF8(album);
+    wchar_t* album = GetTagStrEJ(VGMTag.strGameNameE, VGMTag.strGameNameJ);
+    char* utf8album = wcharToUTF8(album);
 
     // Title
-    wchar_t *title =  GetTagStrEJ(VGMTag.strTrackNameE, VGMTag.strTrackNameJ);
-    char *utf8title = wcharToUTF8(title);
+    wchar_t* title =  GetTagStrEJ(VGMTag.strTrackNameE, VGMTag.strTrackNameJ);
+    char* utf8title = wcharToUTF8(title);
 
     // Length
     int64_t len64 = 0;
@@ -420,8 +420,8 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
     len64 = ReturnPosMsec(VGMPbSmplCount, SampleRate);
 
     // Artist
-    wchar_t *artist = GetTagStrEJ(VGMTag.strAuthorNameE, VGMTag.strAuthorNameJ);
-    char *utf8artist = wcharToUTF8(artist);
+    wchar_t* artist = GetTagStrEJ(VGMTag.strAuthorNameE, VGMTag.strAuthorNameJ);
+    char* utf8artist = wcharToUTF8(artist);
 
     // Track Number in playlist
     int32_t tracknum = 0;
@@ -429,7 +429,7 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
         tracknum = (int32_t)(CurPLFile + 0x01);
     
     // Try and get the cover art url
-    char *arturl = NULL;
+    char* arturl = NULL;
     bool artfound = false;
     char cwd[1024] = { 0 };
     size_t cwdlen = 0;
@@ -464,7 +464,7 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
     // FIXME clean up
     if(!artfound)
     {
-        char *RetStr = GetLastDirSeparator(VgmFileName);
+        char* RetStr = GetLastDirSeparator(VgmFileName);
         size_t RetStrLen = 0;
         size_t albumlen = strlen(utf8album);
         if(RetStr)
@@ -492,7 +492,7 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
     if(!artfound)
     {
         glob_t result;
-        char *RetStr = GetLastDirSeparator(VgmFileName);
+        char* RetStr = GetLastDirSeparator(VgmFileName);
         size_t baselen = 1 + (RetStr ? (strlen(VgmFileName) - strlen(RetStr) + 1) : cwdlen);
 
         char globpath[baselen + 14];
@@ -533,23 +533,23 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
 #endif
 
     // URL encode the path to the png
-    char *arturlescaped = urlencode(arturl);
+    char* arturlescaped = urlencode(arturl);
 
     // Game release date
-    wchar_t *release = VGMTag.strReleaseDate;
-    char *utf8release = wcharToUTF8(release);
+    wchar_t* release = VGMTag.strReleaseDate;
+    char* utf8release = wcharToUTF8(release);
 
     // VGM File Creator
-    wchar_t *creator = VGMTag.strCreator;
-    char *utf8creator = wcharToUTF8(creator);
+    wchar_t* creator = VGMTag.strCreator;
+    char* utf8creator = wcharToUTF8(creator);
 
     // Notes
-    wchar_t *notes = VGMTag.strNotes;
-    char *utf8notes = wcharToUTF8(notes);
+    wchar_t* notes = VGMTag.strNotes;
+    char* utf8notes = wcharToUTF8(notes);
 
     // System
-    wchar_t *system = GetTagStrEJ(VGMTag.strSystemNameE, VGMTag.strSystemNameJ);
-    char *utf8system = wcharToUTF8(system);
+    wchar_t* system = GetTagStrEJ(VGMTag.strSystemNameE, VGMTag.strSystemNameJ);
+    char* utf8system = wcharToUTF8(system);
 
     // VGM File version
     uint32_t version = VGMHead.lngVersion;
@@ -571,7 +571,7 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
     };
 
     // Genre Array
-    char *genre = "Video Game Music";
+    char* genre = "Video Game Music";
     struct DBusMetadata dbusgenre[1] =
     {
         { "", DBUS_TYPE_STRING_AS_STRING, &genre, DBUS_TYPE_STRING, 0 },
@@ -597,10 +597,10 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
                 ChpClk &= ~0x80000000;
                 CurChip |= 0x80;
             }
-            const char *chip = GetAccurateChipName(CurChip, ChpType);
+            const char* chip = GetAccurateChipName(CurChip, ChpType);
             // Because you need to malloc() the malloc()
             chips[chipslen].content = malloc(sizeof(char*));
-            *(char **)chips[chipslen].content = strdup(chip);
+            *(char**)chips[chipslen].content = strdup(chip);
             // Set the type
             chips[chipslen].dbusType = DBUS_TYPE_STRING_AS_STRING;
             chips[chipslen].contentType = DBUS_TYPE_STRING;
@@ -618,14 +618,14 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
     }
 
     // URL encoded Filename
-    char *url = urlencode(VgmFileName);
+    char* url = urlencode(VgmFileName);
 
     // Gain
     // pow(2.0, VolMod / (double)0x20)
 
     // Stubs
-    char *trackid = "/org/mpris/MediaPlayer2/CurrentTrack";
-    char *lastused = "2018-01-04T12:21:32Z";
+    char* trackid = "/org/mpris/MediaPlayer2/CurrentTrack";
+    char* lastused = "2018-01-04T12:21:32Z";
     int32_t discnum = 1;
     int32_t usecnt = 0;
     double userrating = 0;
@@ -674,19 +674,19 @@ static void DBusSendMetadata(DBusMessageIter *dict_root)
     for(size_t i = 0; i < chipslen; i++)
     {
         // If the next pointer is the same as the current one, don't free it.
-        char **ptr = chips[i].content;
+        char** ptr = chips[i].content;
         if(ptr == chips[i+1].content)
             continue;
-        char *ch = *ptr;
+        char* ch = *ptr;
         free(ptr);
         free(ch);
     }
 
 }
 
-static void DBusSendPlaybackStatus(DBusMessageIter *args)
+static void DBusSendPlaybackStatus(DBusMessageIter* args)
 {
-    char *response;
+    char* response;
 
     if(PlayingMode == 0xFF)
         response = "Stopped";
@@ -708,7 +708,7 @@ void DBusEmitSignal(UINT8 type)
     if(!dbus_connection_get_is_connected(connection))
         return;
 
-    DBusMessage *msg;
+    DBusMessage* msg;
     DBusMessageIter args;
 
     if(type & SIGNAL_SEEK)
@@ -745,7 +745,7 @@ void DBusEmitSignal(UINT8 type)
     dbus_message_iter_init_append(msg, &args);
     // The interface in which the properties were changed must be sent first
     // Thankfully the only properties changing are in the same interface
-    char *player = DBUS_MPRIS_PLAYER;
+    char* player = DBUS_MPRIS_PLAYER;
     dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &player);
     // Wrap everything inside an a{sv}
     DBusMessageIter dict, dict_entry;
@@ -754,7 +754,7 @@ void DBusEmitSignal(UINT8 type)
         if(type & SIGNAL_METADATA)
         {
             dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
-                char *title = "Metadata";
+                char* title = "Metadata";
                 dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
                     DBusSendMetadata(&dict_entry);
             dbus_message_iter_close_container(&dict, &dict_entry);
@@ -762,7 +762,7 @@ void DBusEmitSignal(UINT8 type)
         if(type & SIGNAL_CONTROLS)
         {
             dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
-                char *title = "CanGoPrevious";
+                char* title = "CanGoPrevious";
                 dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
                 DBusAppendCanGoPrevious(&dict_entry);
             dbus_message_iter_close_container(&dict, &dict_entry);
@@ -775,7 +775,7 @@ void DBusEmitSignal(UINT8 type)
         if(type & SIGNAL_PLAYSTATUS)
         {
             dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
-                char *playing = "PlaybackStatus";
+                char* playing = "PlaybackStatus";
                 dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &playing);
                 DBusSendPlaybackStatus(&dict_entry);
 
@@ -784,7 +784,7 @@ void DBusEmitSignal(UINT8 type)
         if((type & SIGNAL_SEEK) || (type & SIGNAL_PLAYSTATUS))
         {
             dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
-                char *playing = "Position";
+                char* playing = "Position";
                 dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &playing);
                 int64_t response = ReturnPosMsec(VGMSmplPlayed, SampleRate);
                 DBusReplyWithVariant(&dict_entry, DBUS_TYPE_INT64, DBUS_TYPE_INT64_AS_STRING, &response);
@@ -800,13 +800,13 @@ void DBusEmitSignal(UINT8 type)
     dbus_message_unref(msg);
 }
 
-static void DBusSendMimeTypes(DBusMessageIter *args)
+static void DBusSendMimeTypes(DBusMessageIter* args)
 {
     DBusMessageIter variant, subargs;
     dbus_message_iter_open_container(args, DBUS_TYPE_VARIANT, "as", &variant);
         dbus_message_iter_open_container(&variant, DBUS_TYPE_ARRAY, DBUS_TYPE_STRING_AS_STRING, &subargs);
-            char *response[] = {"audio/x-vgm", "audio/x-vgz"};
-            size_t i_len = sizeof( response ) / sizeof( *response );
+            char* response[] = {"audio/x-vgm", "audio/x-vgz"};
+            size_t i_len = sizeof(response) / sizeof(*response);
             for( size_t i = 0; i < i_len; ++i )
             {
                 dbus_message_iter_append_basic(&subargs, DBUS_TYPE_STRING, &response[i]);
@@ -815,13 +815,13 @@ static void DBusSendMimeTypes(DBusMessageIter *args)
     dbus_message_iter_close_container(args, &variant );
 }
 
-static void DBusSendUriSchemes(DBusMessageIter *args)
+static void DBusSendUriSchemes(DBusMessageIter* args)
 {
     DBusMessageIter variant, subargs;
     dbus_message_iter_open_container(args, DBUS_TYPE_VARIANT, "as", &variant);
         dbus_message_iter_open_container(&variant, DBUS_TYPE_ARRAY, DBUS_TYPE_STRING_AS_STRING, &subargs);
-            char *response[] = {"file"};
-            size_t i_len = sizeof( response ) / sizeof( *response );
+            char* response[] = {"file"};
+            size_t i_len = sizeof(response) / sizeof(*response);
             for( size_t i = 0; i < i_len; ++i )
             {
                 dbus_message_iter_append_basic(&subargs, DBUS_TYPE_STRING, &response[i]);
@@ -830,22 +830,22 @@ static void DBusSendUriSchemes(DBusMessageIter *args)
     dbus_message_iter_close_container(args, &variant );
 }
 
-static void DBusSendEmptyMethodResponse(DBusMessage *message)
+static void DBusSendEmptyMethodResponse(DBusMessage* message)
 {
-    DBusMessage *reply;
+    DBusMessage* reply;
     DBusMessageIter args;
     reply = dbus_message_new_method_return(message);
     dbus_message_iter_init_append(reply, &args);
     dbus_connection_send(connection, reply, NULL);
 }
 
-static DBusHandlerResult DBusHandler(DBusConnection *connection, DBusMessage *message, void *user_data)
+static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* message, void* user_data)
 {
 #ifdef DBUS_DEBUG
-    const char *interface_name = dbus_message_get_interface(message);
-    const char *member_name = dbus_message_get_member(message);
-    const char *path_name = dbus_message_get_path(message);
-    const char *sender = dbus_message_get_sender(message);
+    const char* interface_name = dbus_message_get_interface(message);
+    const char* member_name = dbus_message_get_member(message);
+    const char* path_name = dbus_message_get_path(message);
+    const char* sender = dbus_message_get_sender(message);
 
     printf("Interface: %s; Member: %s; Path: %s; Sender: %s;\n", interface_name, member_name, path_name, sender);
 #endif
@@ -868,9 +868,9 @@ static DBusHandlerResult DBusHandler(DBusConnection *connection, DBusMessage *me
     else if (dbus_message_is_method_call(message, DBUS_INTERFACE_PROPERTIES, "Get"))
     {
         DBusError error;
-        char *method_interface_arg = NULL;
-        char *method_property_arg  = NULL;
-        DBusMessage *reply;
+        char* method_interface_arg = NULL;
+        char* method_property_arg  = NULL;
+        DBusMessage* reply;
      
         dbus_error_init( &error );
         dbus_message_get_args( message, &error,
@@ -923,12 +923,12 @@ static DBusHandlerResult DBusHandler(DBusConnection *connection, DBusMessage *me
             }
             else if(!strcmp(method_property_arg, "DesktopEntry"))
             {
-                char *response = "vgmplay";
+                char* response = "vgmplay";
                 DBusReplyWithVariant(&args, DBUS_TYPE_STRING, DBUS_TYPE_STRING_AS_STRING, &response);
             }
             else if(!strcmp(method_property_arg, "Identity"))
             {
-                char *response = "VGMPlay";
+                char* response = "VGMPlay";
                 DBusReplyWithVariant(&args, DBUS_TYPE_STRING, DBUS_TYPE_STRING_AS_STRING, &response);
             }
             else
@@ -1005,8 +1005,8 @@ static DBusHandlerResult DBusHandler(DBusConnection *connection, DBusMessage *me
     else if (dbus_message_is_method_call(message, DBUS_INTERFACE_PROPERTIES, "GetAll"))
     {
         DBusError error;
-        char *method_interface_arg = NULL;
-        DBusMessage *reply;
+        char* method_interface_arg = NULL;
+        DBusMessage* reply;
      
         dbus_error_init(&error);
         dbus_message_get_args(message, &error,
@@ -1031,8 +1031,8 @@ static DBusHandlerResult DBusHandler(DBusConnection *connection, DBusMessage *me
         
         dbus_bool_t dbustrue = TRUE;
         dbus_bool_t dbusfalse = FALSE;
-        char *title;
-        char *strresponse;
+        char* title;
+        char* strresponse;
 
         if(!strcmp(method_interface_arg, "org.mpris.MediaPlayer2"))
         {
@@ -1273,7 +1273,7 @@ static DBusHandlerResult DBusHandler(DBusConnection *connection, DBusMessage *me
 
 UINT8 MultimediaKeyHook_Init(void)
 {
-    //DBusConnection *connection;
+    //DBusConnection* connection;
     DBusError error;
     DBusObjectPathVTable vtable;
  
