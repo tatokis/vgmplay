@@ -23,6 +23,7 @@ They weren't lying when they said that using libdbus directly signs you up for s
 #include <pthread.h>
 #include "chips/mamedef.h" // for UINT8
 #include "mmkeys.h"
+#include "dbus.h"
 #include "stdbool.h"
 #include "VGMPlay.h" // For VGMFile.h and CHIP_COUNT
 #include <errno.h>

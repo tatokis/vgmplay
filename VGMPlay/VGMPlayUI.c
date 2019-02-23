@@ -37,6 +37,10 @@
 #include "VGMPlay_Intf.h"
 #include "mmkeys.h"
 
+#ifdef USE_DBUS
+#include "dbus.h"
+#endif
+
 #ifdef XMAS_EXTRA
 #include "XMasFiles/XMasBonus.h"
 #endif
@@ -2142,7 +2146,9 @@ static void PlayVGM_UI(void)
 	printf("Initializing ...\r");
 	
 	PlayVGM();
+#ifdef USE_DBUS
 	DBusEmitSignal(SIGNAL_SEEK | SIGNAL_METADATA | SIGNAL_PLAYSTATUS | SIGNAL_CONTROLS);
+#endif
 	/*switch(LogToWave)
 	{
 	case 0x00:
@@ -2278,12 +2284,14 @@ static void PlayVGM_UI(void)
 		
 		if (! PausePlay || PosPrint)
 		{
+#ifdef USE_DBUS
 			// Dirty hack to detect loops
 			if(OldLoopCount <= VGMCurLoop)
 			{
 				OldLoopCount = VGMCurLoop + 1;
 				DBusEmitSignal(SIGNAL_SEEK);
 			}
+#endif
 			PosPrint = false;
 			
 			VGMPbSmplCount = SampleVGM2Playback(VGMHead.lngTotalSamples);
@@ -2544,7 +2552,9 @@ static void PlayVGM_UI(void)
 				{
 					SeekVGM(true, PlaySmpl * SampleRate);
 					PosPrint = true;
+#ifdef USE_DBUS
 					DBusEmitSignal(SIGNAL_SEEK);
+#endif
 				}
 				break;
 #ifdef WIN32
@@ -2557,14 +2567,18 @@ static void PlayVGM_UI(void)
 			case ' ':
 				PauseVGM(! PausePlay);
 				PosPrint = true;
+#ifdef USE_DBUS
 				DBusEmitSignal(SIGNAL_PLAYSTATUS); // Emit status change signal
+#endif
 				break;
 			case 'F':	// Fading
 				FadeTime = FadeTimeN;
 				FadePlay = true;
 				break;
 			case 'R':	// Restart
+#ifdef USE_DBUS
 				DBusEmitSignal(SIGNAL_SEEK);
+#endif
 				RestartVGM();
 				PosPrint = true;
 				break;

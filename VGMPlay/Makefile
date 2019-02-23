@@ -56,7 +56,17 @@ ifndef BYTE_ORDER
 BYTE_ORDER = 1
 endif
 
+# set to 0 to compile without dbus support on linux
+ifndef USE_DBUS
+USE_DBUS = 1
+endif
 
+ifeq ($(WINDOWS), 1)
+USE_DBUS = 0
+endif
+ifeq ($(MACOSX), 1)
+USE_DBUS = 0
+endif
 
 CC = gcc
 ifndef PREFIX
@@ -119,9 +129,14 @@ ifeq ($(MACOSX), 1)
 else
 # for Linux, add librt (clock stuff) and libpthread (threads)
 LDFLAGS += -lrt -lpthread -pthread
+
 #DBus
+ifeq ($(USE_DBUS), 1)
 CFLAGS += $(shell pkg-config --cflags dbus-1)
 LDFLAGS += $(shell pkg-config --libs dbus-1)
+MAINFLAGS += -DUSE_DBUS
+endif
+
 endif
 MAINFLAGS += -pthread -DSHARE_PREFIX=\"$(PREFIX)\"
 endif
@@ -227,8 +242,14 @@ EMUOBJS = \
 	$(EMUOBJ)/ym2413hd.o \
 	$(EMUOBJ)/ym2413_opl.o
 VGMPLAY_OBJS = \
-	$(OBJ)/VGMPlayUI.o \
-	$(OBJ)/mmkeys_gdbus.o
+	$(OBJ)/VGMPlayUI.o
+    
+ifeq ($(USE_DBUS), 1)
+	VGMPLAY_OBJS += $(OBJ)/dbus.o
+else
+    VGMPLAY_OBJS += $(OBJ)/mmkeys_stub.o
+endif
+
 VGM2PCM_OBJS = \
 	$(OBJ)/vgm2pcm.o
 VGM2WAV_OBJS = \
