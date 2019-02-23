@@ -243,11 +243,11 @@ EMUOBJS = \
 	$(EMUOBJ)/ym2413_opl.o
 VGMPLAY_OBJS = \
 	$(OBJ)/VGMPlayUI.o
-    
+ 
 ifeq ($(USE_DBUS), 1)
 	VGMPLAY_OBJS += $(OBJ)/dbus.o
 else
-    VGMPLAY_OBJS += $(OBJ)/mmkeys_stub.o
+	VGMPLAY_OBJS += $(OBJ)/mmkeys_stub.o
 endif
 
 VGM2PCM_OBJS = \
@@ -260,6 +260,9 @@ EXTRA_OBJS = $(VGMPLAY_OBJS) $(VGM2PCM_OBJS) $(VGM2WAV_OBJS)
 all:	vgmplay vgm2pcm vgm2wav
 
 vgmplay:	$(EMUOBJS) $(MAINOBJS) $(VGMPLAY_OBJS)
+	@echo Generating xdg desktop entry
+	@cp xdg/vgmplay.desktop.in xdg/vgmplay.desktop
+	@sed -i "s/@BIN_PATH@/$(subst /,\/,$(DESTDIR)$(PREFIX)/bin/)/" xdg/vgmplay.desktop
 	@echo Linking vgmplay ...
 	@$(CC) $(VGMPLAY_OBJS) $(MAINOBJS) $(EMUOBJS) $(LDFLAGS) -o vgmplay
 	@echo Done.
@@ -287,6 +290,7 @@ $(OBJ)/%.o:	$(SRC)/%.c
 	@$(CC) $(CFLAGS) $(MAINFLAGS) -c $< -o $@
 
 clean:
+	@rm -f xdg/vgmplay.desktop
 	@echo Deleting object files ...
 	@rm -f $(MAINOBJS) $(EMUOBJS) $(EXTRA_OBJS)
 	@echo Deleting executable files ...
@@ -302,6 +306,14 @@ install:	vgmplay
 	install -m 644 vgmplay.1 $(DESTDIR)$(MANPREFIX)/man1/vgmplay.1
 	mkdir -m 755 -p $(DESTDIR)$(PREFIX)/share/vgmplay
 	install -m 644 VGMPlay.ini $(DESTDIR)$(PREFIX)/share/vgmplay/vgmplay.ini
+ifeq ($(USE_DBUS), 1)
+		xdg-icon-resource install --novendor --size 128 xdg/icons/vgmplay-128.png vgmplay
+		xdg-icon-resource install --novendor --size 64 xdg/icons/vgmplay-64.png vgmplay
+		xdg-icon-resource install --novendor --size 32 xdg/icons/vgmplay-32.png vgmplay
+		xdg-icon-resource install --novendor --size 16 xdg/icons/vgmplay-16.png vgmplay
+		xdg-mime install --novendor xdg/vgmplay-mime.xml
+		xdg-desktop-menu install --novendor xdg/vgmplay.desktop
+endif
 
 # install ROMs
 rom_install:
