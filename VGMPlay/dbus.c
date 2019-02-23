@@ -21,11 +21,11 @@ They weren't lying when they said that using libdbus directly signs you up for s
 #include <unistd.h>
 #include <dbus/dbus.h>
 #include <pthread.h>
-#include "chips/mamedef.h" // for UINT8
+#include "chips/mamedef.h"          // for UINT8
 #include "mmkeys.h"
 #include "dbus.h"
 #include "stdbool.h"
-#include "VGMPlay.h" // For VGMFile.h and CHIP_COUNT
+#include "VGMPlay.h"                // For VGMFile.h and CHIP_COUNT
 #include <errno.h>
 #include <locale.h>
 #include <wchar.h>
@@ -36,10 +36,11 @@ They weren't lying when they said that using libdbus directly signs you up for s
 #define MAX_PATH PATH_MAX
 
 // DBus MPRIS Constants
-#define DBUS_MPRIS_PATH "/org/mpris/MediaPlayer2"
-#define DBUS_MPRIS_MEDIAPLAYER2 "org.mpris.MediaPlayer2"
-#define DBUS_MPRIS_PLAYER "org.mpris.MediaPlayer2.Player"
-#define DBUS_PROPERTIES "org.freedesktop.DBus.Properties"
+#define DBUS_MPRIS_PATH             "/org/mpris/MediaPlayer2"
+#define DBUS_MPRIS_MEDIAPLAYER2     "org.mpris.MediaPlayer2"
+#define DBUS_MPRIS_PLAYER           "org.mpris.MediaPlayer2.Player"
+#define DBUS_MPRIS_VGMPLAY          "org.mpris.MediaPlayer2.vgmplay"
+#define DBUS_PROPERTIES             "org.freedesktop.DBus.Properties"
 
 //#define DBUS_DEBUG
 
@@ -179,7 +180,9 @@ static void HandleError(DBusError* error)
 {
     if (dbus_error_is_set(error))
     {
+        puts("\n\n");
         puts(error->message);
+        puts("\n\n");
     }
 }
 
@@ -1274,7 +1277,6 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
 
 UINT8 MultimediaKeyHook_Init(void)
 {
-    //DBusConnection* connection;
     DBusError error;
     DBusObjectPathVTable vtable;
  
@@ -1283,34 +1285,34 @@ UINT8 MultimediaKeyHook_Init(void)
     dbus_error_init(&error);
     connection = dbus_bus_get(DBUS_BUS_SESSION, &error);
     HandleError(&error);
- 
-    dbus_bus_request_name(connection, "org.mpris.MediaPlayer2.vgmplay", 0, &error);
+
+    // If we're not the owners, don't bother with anything else
+    if(dbus_bus_request_name(connection, DBUS_MPRIS_VGMPLAY, DBUS_NAME_FLAG_DO_NOT_QUEUE, &error) != DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER)
+    {
+        dbus_connection_unref(connection);
+        return 0x00;
+    }
     HandleError(&error);
  
     vtable.message_function = DBusHandler;
     vtable.unregister_function = NULL;
 
-    dbus_connection_try_register_object_path(connection,
-        "/org/mpris/MediaPlayer2",
-        &vtable,
-        NULL,
-        &error);
+    dbus_connection_try_register_object_path(connection, DBUS_MPRIS_PATH, &vtable, NULL, &error);
     HandleError(&error);
 
-    pthread_t mainloop_thread;
     pthread_create(&mainloop_thread, NULL, MainLoop, connection);
-    //pthread_detach(mainloop_thread);
     return 0x00;
 }
 
 void MultimediaKeyHook_Deinit(void)
 {
-    //tell pthread to exit
-    //??? pass the dbus connection
+    // Tell the thread to exit.
+    // TODO use pthread cond
     runloop = 0;
-    /*if(mainloop_thread == NULL)
-        return;*/
-    
+
+    if(!mainloop_thread)
+        return;
+
     pthread_join(mainloop_thread, NULL);
     dbus_connection_unref(connection);
     return;
