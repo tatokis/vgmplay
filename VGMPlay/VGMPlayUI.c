@@ -2276,6 +2276,7 @@ static void PlayVGM_UI(void)
 	OldLoopCount = 0;
 	while(! QuitPlay)
 	{
+        dbus_connection_read_write_dispatch(connection, 5);
 		if(sigint)
 		{
 			QuitPlay = true;

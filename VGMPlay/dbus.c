@@ -69,7 +69,7 @@ extern UINT8 PlayingMode;
 extern bool PausePlay;
 
 // Sigh
-static DBusConnection* connection;
+DBusConnection* connection;
 
 // Seek Function
 extern void SeekVGM(bool Relative, INT32 PlayBkSamples);
@@ -1300,7 +1300,7 @@ UINT8 MultimediaKeyHook_Init(void)
     dbus_connection_try_register_object_path(connection, DBUS_MPRIS_PATH, &vtable, NULL, &error);
     HandleError(&error);
 
-    pthread_create(&mainloop_thread, NULL, MainLoop, connection);
+    //pthread_create(&mainloop_thread, NULL, MainLoop, connection);
     return 0x00;
 }
 
@@ -1310,10 +1310,10 @@ void MultimediaKeyHook_Deinit(void)
     // TODO use pthread cond
     runloop = 0;
 
-    if(!mainloop_thread)
-        return;
+    //if(!mainloop_thread)
+    //    return;
 
-    pthread_join(mainloop_thread, NULL);
+    //pthread_join(mainloop_thread, NULL);
     dbus_connection_unref(connection);
     return;
 }

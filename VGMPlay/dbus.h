@@ -9,4 +9,8 @@
 #define SIGNAL_CONTROLS    0x10 // Playback controls need to be updated (CanGoNext/Previous)
 #define SIGNAL_ALL         0xFF // All Signals
 
+#include <dbus/dbus.h>
+
+DBusConnection* connection;
+
 #endif	// __DBUS_H__
