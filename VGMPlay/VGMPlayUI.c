@@ -260,8 +260,6 @@ static void signal_handler(int signal)
 }
 #endif
 
-extern void DBusEmitSignal(UINT8 type);
-
 int main(int argc, char* argv[])
 {
 	int argbase;
@@ -2146,9 +2144,7 @@ static void PlayVGM_UI(void)
 	printf("Initializing ...\r");
 	
 	PlayVGM();
-#ifdef USE_DBUS
-	DBusEmitSignal(SIGNAL_SEEK | SIGNAL_METADATA | SIGNAL_PLAYSTATUS | SIGNAL_CONTROLS);
-#endif
+	DBus_EmitSignal(SIGNAL_SEEK | SIGNAL_METADATA | SIGNAL_PLAYSTATUS | SIGNAL_CONTROLS);
 	/*switch(LogToWave)
 	{
 	case 0x00:
@@ -2276,7 +2272,7 @@ static void PlayVGM_UI(void)
 	OldLoopCount = 0;
 	while(! QuitPlay)
 	{
-        dbus_connection_read_write_dispatch(connection, 5);
+		DBus_ReadWriteDispatch();
 		if(sigint)
 		{
 			QuitPlay = true;
@@ -2290,7 +2286,7 @@ static void PlayVGM_UI(void)
 			if(OldLoopCount <= VGMCurLoop)
 			{
 				OldLoopCount = VGMCurLoop + 1;
-				DBusEmitSignal(SIGNAL_SEEK);
+				DBus_EmitSignal(SIGNAL_SEEK);
 			}
 #endif
 			PosPrint = false;
@@ -2553,9 +2549,7 @@ static void PlayVGM_UI(void)
 				{
 					SeekVGM(true, PlaySmpl * SampleRate);
 					PosPrint = true;
-#ifdef USE_DBUS
-					DBusEmitSignal(SIGNAL_SEEK);
-#endif
+					DBus_EmitSignal(SIGNAL_SEEK);
 				}
 				break;
 #ifdef WIN32
@@ -2568,18 +2562,14 @@ static void PlayVGM_UI(void)
 			case ' ':
 				PauseVGM(! PausePlay);
 				PosPrint = true;
-#ifdef USE_DBUS
-				DBusEmitSignal(SIGNAL_PLAYSTATUS); // Emit status change signal
-#endif
+				DBus_EmitSignal(SIGNAL_PLAYSTATUS); // Emit status change signal
 				break;
 			case 'F':	// Fading
 				FadeTime = FadeTimeN;
 				FadePlay = true;
 				break;
 			case 'R':	// Restart
-#ifdef USE_DBUS
-				DBusEmitSignal(SIGNAL_SEEK);
-#endif
+				DBus_EmitSignal(SIGNAL_SEEK);
 				RestartVGM();
 				PosPrint = true;
 				break;

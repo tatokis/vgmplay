@@ -45,8 +45,6 @@ They weren't lying when they said that using libdbus directly signs you up for s
 //#define DBUS_DEBUG
 
 static mmkey_cbfunc evtCallback = NULL;
-static pthread_t mainloop_thread = 0;
-static int runloop = 1;
 INT32 VGMPbSmplCount;
 
 extern INT32 VGMSmplPlayed;
@@ -162,18 +160,6 @@ static bool FileExists(char* file)
         return true;*/
 }
 
-// Main Loop
-static void* MainLoop(void* conn)
-{
-    while(runloop)
-    {
-        dbus_connection_read_write_dispatch(conn, 200);
-    }
-    //dbus_connection_unref(conn);
-    //pthread_exit(0);
-    return NULL;
-}
-
 // DBus Helper Functions
 
 static void HandleError(DBusError* error)
@@ -189,7 +175,6 @@ static void HandleError(DBusError* error)
 static void DBusEmptyMethodResponse(DBusConnection* connection, DBusMessage* request)
 {
     DBusMessage* reply;
-    //DBusError error;
 
     reply = dbus_message_new_method_return(request);
     dbus_message_append_args(reply, DBUS_TYPE_INVALID);
@@ -702,7 +687,7 @@ static void DBusSendPlaybackStatus(DBusMessageIter* args)
     DBusReplyWithVariant(args, DBUS_TYPE_STRING, DBUS_TYPE_STRING_AS_STRING, &response);
 }
 
-void DBusEmitSignal(UINT8 type)
+void DBus_EmitSignal(UINT8 type)
 {
 #ifdef DBUS_DEBUG
     printf("Emitting signal type 0x%x\n", type);
@@ -1239,7 +1224,7 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
         DBusEmptyMethodResponse(connection, message);
 
         // Emit seeked signal
-        DBusEmitSignal(SIGNAL_SEEK);
+        DBus_EmitSignal(SIGNAL_SEEK);
 
         return DBUS_HANDLER_RESULT_HANDLED;
     }
@@ -1306,20 +1291,15 @@ UINT8 MultimediaKeyHook_Init(void)
 
 void MultimediaKeyHook_Deinit(void)
 {
-    // Tell the thread to exit.
-    // TODO use pthread cond
-    runloop = 0;
-
-    //if(!mainloop_thread)
-    //    return;
-
-    //pthread_join(mainloop_thread, NULL);
     dbus_connection_unref(connection);
-    return;
 }
 
 void MultimediaKeyHook_SetCallback(mmkey_cbfunc callbackFunc)
 {
     evtCallback = callbackFunc;
-    return;
+}
+
+void DBus_ReadWriteDispatch()
+{
+    dbus_connection_read_write_dispatch(connection, 5);
 }

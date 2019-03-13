@@ -9,8 +9,9 @@
 #define SIGNAL_CONTROLS    0x10 // Playback controls need to be updated (CanGoNext/Previous)
 #define SIGNAL_ALL         0xFF // All Signals
 
-#include <dbus/dbus.h>
+#include "chips/mamedef.h"
 
-DBusConnection* connection;
+void DBus_ReadWriteDispatch();
+void DBus_EmitSignal(UINT8 type);
 
 #endif	// __DBUS_H__
