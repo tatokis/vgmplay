@@ -7,6 +7,7 @@
 #define SIGNAL_SEEKSTATUS  0x04 // Seek Status Changed
 #define SIGNAL_SEEK        0x08 // Seeked
 #define SIGNAL_CONTROLS    0x10 // Playback controls need to be updated (CanGoNext/Previous)
+#define SIGNAL_VOLUME      0x20 // Volume needs to be updated
 #define SIGNAL_ALL         0xFF // All Signals
 
 #include "chips/mamedef.h"

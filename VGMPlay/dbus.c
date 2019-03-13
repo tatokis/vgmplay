@@ -785,6 +785,15 @@ void DBus_EmitSignal(UINT8 type)
                 DBusReplyWithVariant(&dict_entry, DBUS_TYPE_INT64, DBUS_TYPE_INT64_AS_STRING, &response);
             dbus_message_iter_close_container(&dict, &dict_entry);
         }
+        if((type & SIGNAL_VOLUME))
+        {
+            dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
+                char* playing = "Volume";
+                dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &playing);
+                double response = 1.0;
+                DBusReplyWithVariant(&dict_entry, DBUS_TYPE_DOUBLE, DBUS_TYPE_DOUBLE_AS_STRING, &response);
+            dbus_message_iter_close_container(&dict, &dict_entry);
+        }
     dbus_message_iter_close_container(&args, &dict);
 
     // Send a blank array _with signature "s"_.
@@ -1255,6 +1264,12 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
         evtCallback(MMKEY_NEXT);
         return DBUS_HANDLER_RESULT_HANDLED;
     }
+    else if (dbus_message_is_method_call(message, DBUS_INTERFACE_PROPERTIES, "Set"))
+    {
+        // Dummy Set to send a signal to revert Volume changes
+        DBus_EmitSignal(SIGNAL_VOLUME);
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
     else
     {
 #ifdef DBUS_DEBUG
@@ -1279,6 +1294,7 @@ UINT8 MultimediaKeyHook_Init(void)
     if(dbus_bus_request_name(connection, DBUS_MPRIS_VGMPLAY, DBUS_NAME_FLAG_DO_NOT_QUEUE, &error) != DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER)
     {
         dbus_connection_unref(connection);
+        connection = NULL;
         return 0x00;
     }
     HandleError(&error);
@@ -1314,5 +1330,5 @@ void DBus_ReadWriteDispatch()
         OldLoopCount = VGMCurLoop;
         DBus_EmitSignal(SIGNAL_SEEK);
     }
-    dbus_connection_read_write_dispatch(connection, 5);
+    dbus_connection_read_write_dispatch(connection, 2);
 }

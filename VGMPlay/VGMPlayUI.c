@@ -23,6 +23,7 @@
 #include <unistd.h>	// for STDIN_FILENO and usleep()
 #include <sys/time.h>	// for struct timeval in _kbhit()
 #include <signal.h> // for signal()
+#include <sys/select.h> // for select()
 
 #define	Sleep(msec)	usleep(msec * 1000)
 #define _vsnwprintf	vswprintf
@@ -36,10 +37,7 @@
 #include "VGMPlay.h"
 #include "VGMPlay_Intf.h"
 #include "mmkeys.h"
-
-#ifdef USE_DBUS
 #include "dbus.h"
-#endif
 
 #ifdef XMAS_EXTRA
 #include "XMasFiles/XMasBonus.h"
@@ -388,7 +386,6 @@ int main(int argc, char* argv[])
 
 	MultimediaKeyHook_Init();
 	MultimediaKeyHook_SetCallback(&MMKey_Event);
-	DBus_ReadWriteDispatch();
 	
 	ErrRet = 0;
 	argbase = 0x01;
@@ -455,7 +452,32 @@ int main(int argc, char* argv[])
 		//	Debug build:	Dynamite D³x [tag display wrong]
 		//	Release build:	Dynamite D³x [tag display wrong]
 #else
-		StrPtr = fgets(VgmFileName, MAX_PATH, stdin);
+		fflush(stdout);
+		while(1)
+		{
+			fd_set fds;
+			FD_ZERO(&fds);
+			FD_SET(fileno(stdin), &fds);
+			struct timeval tv = {0, 10};
+			int sel_ret = select(1, &fds, NULL, NULL, &tv);
+			if(sel_ret == -1)
+				break;
+			else if(!sel_ret)
+			{
+				DBus_ReadWriteDispatch();
+				// If ^C has been pressed, quit immediately
+				if(sigint)
+				{
+					printf("\n");
+					break;
+				}
+			}
+			else
+			{
+				StrPtr = fgets(VgmFileName, MAX_PATH, stdin);
+				break;
+			}
+		}
 		if (StrPtr == NULL)
 			VgmFileName[0] = '\0';
 #endif
@@ -2119,7 +2141,7 @@ static void ShowVGMTag(void)
 static void MMKey_Event(UINT8 event)
 {
 	lastMMEvent = event;
-	
+
 	return;
 }
 
