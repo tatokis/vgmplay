@@ -388,6 +388,7 @@ int main(int argc, char* argv[])
 
 	MultimediaKeyHook_Init();
 	MultimediaKeyHook_SetCallback(&MMKey_Event);
+	DBus_ReadWriteDispatch();
 	
 	ErrRet = 0;
 	argbase = 0x01;
@@ -2139,7 +2140,6 @@ static void PlayVGM_UI(void)
 	bool LastUninit;
 	bool QuitPlay;
 	UINT32 PlayTimeEnd;
-	UINT32 OldLoopCount;
 	
 	printf("Initializing ...\r");
 	
@@ -2269,7 +2269,6 @@ static void PlayVGM_UI(void)
 	
 	PlayTimeEnd = 0;
 	QuitPlay = false;
-	OldLoopCount = 0;
 	while(! QuitPlay)
 	{
 		DBus_ReadWriteDispatch();
@@ -2281,14 +2280,6 @@ static void PlayVGM_UI(void)
 		
 		if (! PausePlay || PosPrint)
 		{
-#ifdef USE_DBUS
-			// Dirty hack to detect loops
-			if(OldLoopCount <= VGMCurLoop)
-			{
-				OldLoopCount = VGMCurLoop + 1;
-				DBus_EmitSignal(SIGNAL_SEEK);
-			}
-#endif
 			PosPrint = false;
 			
 			VGMPbSmplCount = SampleVGM2Playback(VGMHead.lngTotalSamples);
@@ -2370,7 +2361,7 @@ static void PlayVGM_UI(void)
 		if (! PausePlay && PlayingMode != 0x01)
 			WaveOutLinuxCallBack();
 		else
-			Sleep(100);
+			Sleep(50);
 #endif
 		
 		if (EndPlay)

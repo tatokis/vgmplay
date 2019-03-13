@@ -66,8 +66,7 @@ extern char PLFileName[MAX_PATH];
 extern UINT8 PlayingMode;
 extern bool PausePlay;
 
-// Sigh
-DBusConnection* connection;
+DBusConnection* connection = NULL;
 
 // Seek Function
 extern void SeekVGM(bool Relative, INT32 PlayBkSamples);
@@ -76,6 +75,10 @@ extern void SeekVGM(bool Relative, INT32 PlayBkSamples);
 extern char VgmFileName[MAX_PATH];
 
 extern char* GetLastDirSeparator(const char* FilePath);
+
+// Needed for loop detection
+static UINT32 OldLoopCount;
+extern UINT32 VGMCurLoop;
 
 // MPRIS Metadata Struct
 typedef struct DBusMetadata
@@ -142,13 +145,13 @@ static char* urlencode(char* str)
 // Return current position in μs
 static int64_t ReturnPosMsec(UINT32 SamplePos, UINT32 SmplRate)
 {
-    return (int64_t)((SamplePos / (double)SmplRate)*1000000);
+    return (int64_t)((SamplePos / (double)SmplRate)*1000000.0);
 }
 
 // Return current position in samples
 static INT32 ReturnSamplePos(int64_t UsecPos, UINT32 SmplRate)
 {
-    return (UsecPos / 1000000)*(double)SmplRate;
+    return (UsecPos / 1000000.0)*(double)SmplRate;
 }
 
 static bool FileExists(char* file)
@@ -692,6 +695,9 @@ void DBus_EmitSignal(UINT8 type)
 #ifdef DBUS_DEBUG
     printf("Emitting signal type 0x%x\n", type);
 #endif
+    if(connection == NULL)
+        return;
+
     // Make sure we're connected to DBus
     // Otherwise discard the event
     if(!dbus_connection_get_is_connected(connection))
@@ -1205,9 +1211,7 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
         int64_t offset = 0;
      
         dbus_error_init(&error);
-        dbus_message_get_args(message, &error,
-            DBUS_TYPE_INT64, &offset,
-            DBUS_TYPE_INVALID);
+        dbus_message_get_args(message, &error, DBUS_TYPE_INT64, &offset, DBUS_TYPE_INVALID);
 
         if(dbus_error_is_set(&error))
         {
@@ -1285,13 +1289,13 @@ UINT8 MultimediaKeyHook_Init(void)
     dbus_connection_try_register_object_path(connection, DBUS_MPRIS_PATH, &vtable, NULL, &error);
     HandleError(&error);
 
-    //pthread_create(&mainloop_thread, NULL, MainLoop, connection);
     return 0x00;
 }
 
 void MultimediaKeyHook_Deinit(void)
 {
-    dbus_connection_unref(connection);
+    if(connection != NULL)
+        dbus_connection_unref(connection);
 }
 
 void MultimediaKeyHook_SetCallback(mmkey_cbfunc callbackFunc)
@@ -1301,5 +1305,14 @@ void MultimediaKeyHook_SetCallback(mmkey_cbfunc callbackFunc)
 
 void DBus_ReadWriteDispatch()
 {
+    if(connection == NULL)
+        return;
+
+    // Detect loops and send the seeked signal when appropriate
+    if(OldLoopCount != VGMCurLoop)
+    {
+        OldLoopCount = VGMCurLoop;
+        DBus_EmitSignal(SIGNAL_SEEK);
+    }
     dbus_connection_read_write_dispatch(connection, 5);
 }
