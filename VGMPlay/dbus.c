@@ -865,6 +865,7 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
     else if (dbus_message_is_method_call(message, DBUS_MPRIS_MEDIAPLAYER2, "Raise"))
     {
         printf("\a");
+        fflush(stdout);
         DBusSendEmptyMethodResponse(message);
         return DBUS_HANDLER_RESULT_HANDLED;
     }
