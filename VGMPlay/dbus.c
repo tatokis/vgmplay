@@ -81,7 +81,7 @@ static UINT32 OldLoopCount;
 extern UINT32 VGMCurLoop;
 
 // MPRIS Metadata Struct
-typedef struct DBusMetadata
+typedef struct DBusMetadata_
 {
     void* title;
     char* dbusType;
@@ -156,7 +156,7 @@ static INT32 ReturnSamplePos(int64_t UsecPos, UINT32 SmplRate)
 
 static bool FileExists(char* file)
 {
-    return !!(access(file, F_OK) + 1);
+    return access(file, F_OK) + 1;
     /*if(access(file, F_OK) == -1)
         return false;
     else
@@ -164,31 +164,16 @@ static bool FileExists(char* file)
 }
 
 // DBus Helper Functions
-
-static void HandleError(DBusError* error)
-{
-    if (dbus_error_is_set(error))
-    {
-        puts("\n\n");
-        puts(error->message);
-        puts("\n\n");
-    }
-}
-
 static void DBusEmptyMethodResponse(DBusConnection* connection, DBusMessage* request)
 {
-    DBusMessage* reply;
-
-    reply = dbus_message_new_method_return(request);
+    DBusMessage* reply = dbus_message_new_method_return(request);
     dbus_message_append_args(reply, DBUS_TYPE_INVALID);
     dbus_connection_send(connection, reply, NULL);
     dbus_message_unref(reply);
 }
 
 static void DBusReplyToIntrospect(DBusConnection* connection, DBusMessage* request)
-{
-    DBusMessage* reply;
- 
+{ 
     const char* introspection_data =
 "<!DOCTYPE node PUBLIC \"-//freedesktop//DTD D-BUS Object Introspection 1.0//EN\"\n"
 "\"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\n"
@@ -239,9 +224,7 @@ static void DBusReplyToIntrospect(DBusConnection* connection, DBusMessage* reque
 "  <interface name=\"org.mpris.MediaPlayer2.Player\">\n"
 "    <property name=\"Metadata\" type=\"a{sv}\" access=\"read\" />\n"
 "    <property name=\"PlaybackStatus\" type=\"s\" access=\"read\" />\n"
-//"    <property name=\"LoopStatus\" type=\"s\" access=\"readwrite\" />\n"
 "    <property name=\"Volume\" type=\"d\" access=\"readwrite\" />\n"
-//"    <property name=\"Shuffle\" type=\"d\" access=\"readwrite\" />\n"
 "    <property name=\"Position\" type=\"x\" access=\"read\" />\n"
 "    <property name=\"Rate\" type=\"d\" access=\"readwrite\" />\n"
 "    <property name=\"MinimumRate\" type=\"d\" access=\"readwrite\" />\n"
@@ -272,44 +255,10 @@ static void DBusReplyToIntrospect(DBusConnection* connection, DBusMessage* reque
 "      <arg type=\"x\" name=\"Position\"/>\n"
 "    </signal>\n"
 "  </interface>\n"
-/*"  <interface name=\"org.mpris.MediaPlayer2.TrackList\">\n"
-"    <property name=\"Tracks\" type=\"ao\" access=\"read\" />\n"
-"    <property name=\"CanEditTracks\" type=\"b\" access=\"read\" />\n"
-"    <method name=\"GetTracksMetadata\">\n"
-"      <arg type=\"ao\" direction=\"in\" />\n"
-"      <arg type=\"aa{sv}\" direction=\"out\" />\n"
-"    </method>\n"
-"    <method name=\"AddTrack\">\n"
-"      <arg type=\"s\" direction=\"in\" />\n"
-"      <arg type=\"o\" direction=\"in\" />\n"
-"      <arg type=\"b\" direction=\"in\" />\n"
-"    </method>\n"
-"    <method name=\"RemoveTrack\">\n"
-"      <arg type=\"o\" direction=\"in\" />\n"
-"    </method>\n"
-"    <method name=\"GoTo\">\n"
-"      <arg type=\"o\" direction=\"in\" />\n"
-"    </method>\n"
-"    <signal name=\"TrackListReplaced\">\n"
-"      <arg type=\"ao\" />\n"
-"      <arg type=\"o\" />\n"
-"    </signal>\n"
-"    <signal name=\"TrackAdded\">\n"
-"      <arg type=\"a{sv}\" />\n"
-"      <arg type=\"o\" />\n"
-"    </signal>\n"
-"    <signal name=\"TrackRemoved\">\n"
-"      <arg type=\"o\" />\n"
-"    </signal>\n"
-"    <signal name=\"TrackMetadataChanged\">\n"
-"      <arg type=\"o\" />\n"
-"      <arg type=\"a{sv}\" />\n"
-"    </signal>\n"
-"  </interface>\n"*/
 "</node>\n"
 ;
 
-    reply = dbus_message_new_method_return(request);
+    DBusMessage* reply = dbus_message_new_method_return(request);
     dbus_message_append_args(reply,
         DBUS_TYPE_STRING, &introspection_data,
         DBUS_TYPE_INVALID);
@@ -557,19 +506,19 @@ static void DBusSendMetadata(DBusMessageIter* dict_root)
 
     // Encapsulate some data in DBusMetadata Arrays
     // Artist Array
-    struct DBusMetadata dbusartist[1] =
+    DBusMetadata dbusartist[1] =
     {
         { "", DBUS_TYPE_STRING_AS_STRING, &utf8artist, DBUS_TYPE_STRING, 0 },
     };
 
     // Genre Array
     char* genre = "Video Game Music";
-    struct DBusMetadata dbusgenre[1] =
+    DBusMetadata dbusgenre[1] =
     {
         { "", DBUS_TYPE_STRING_AS_STRING, &genre, DBUS_TYPE_STRING, 0 },
     };
 
-    struct DBusMetadata chips[CHIP_COUNT] = { 0 };
+    DBusMetadata chips[CHIP_COUNT] = { 0 };
     size_t chipslen = 0;
     // Generate chips array
     for (UINT8 CurChip = 0x00; CurChip < CHIP_COUNT; CurChip ++)
@@ -622,7 +571,7 @@ static void DBusSendMetadata(DBusMessageIter* dict_root)
     int32_t usecnt = 0;
     double userrating = 0;
 
-    struct DBusMetadata meta[] = 
+    DBusMetadata meta[] = 
     {
         { "mpris:trackid", DBUS_TYPE_STRING_AS_STRING, &trackid, DBUS_TYPE_STRING, 0 },
         { "xesam:url", DBUS_TYPE_STRING_AS_STRING, &url, DBUS_TYPE_STRING, 0 },
@@ -1281,30 +1230,26 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
 }
 
 UINT8 MultimediaKeyHook_Init(void)
-{
-    DBusError error;
-    DBusObjectPathVTable vtable;
- 
-    dbus_threads_init_default();
-    
-    dbus_error_init(&error);
-    connection = dbus_bus_get(DBUS_BUS_SESSION, &error);
-    HandleError(&error);
+{ 
+    connection = dbus_bus_get(DBUS_BUS_SESSION, NULL);
+    if(!connection)
+        return 0x00;
 
     // If we're not the owners, don't bother with anything else
-    if(dbus_bus_request_name(connection, DBUS_MPRIS_VGMPLAY, DBUS_NAME_FLAG_DO_NOT_QUEUE, &error) != DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER)
+    if(dbus_bus_request_name(connection, DBUS_MPRIS_VGMPLAY, DBUS_NAME_FLAG_DO_NOT_QUEUE, NULL) != DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER)
     {
         dbus_connection_unref(connection);
         connection = NULL;
         return 0x00;
     }
-    HandleError(&error);
- 
-    vtable.message_function = DBusHandler;
-    vtable.unregister_function = NULL;
+    
+    DBusObjectPathVTable vtable =
+    {
+        .message_function = DBusHandler,
+        .unregister_function = NULL,
+    };
 
-    dbus_connection_try_register_object_path(connection, DBUS_MPRIS_PATH, &vtable, NULL, &error);
-    HandleError(&error);
+    dbus_connection_try_register_object_path(connection, DBUS_MPRIS_PATH, &vtable, NULL, NULL);
 
     return 0x00;
 }
@@ -1331,5 +1276,6 @@ void DBus_ReadWriteDispatch()
         OldLoopCount = VGMCurLoop;
         DBus_EmitSignal(SIGNAL_SEEK);
     }
-    dbus_connection_read_write_dispatch(connection, 2);
+
+    dbus_connection_read_write_dispatch(connection, 1);
 }
