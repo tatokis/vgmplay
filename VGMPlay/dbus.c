@@ -173,7 +173,7 @@ static void DBusEmptyMethodResponse(DBusConnection* connection, DBusMessage* req
 }
 
 static void DBusReplyToIntrospect(DBusConnection* connection, DBusMessage* request)
-{ 
+{
     const char* introspection_data =
 "<!DOCTYPE node PUBLIC \"-//freedesktop//DTD D-BUS Object Introspection 1.0//EN\"\n"
 "\"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\n"
@@ -296,7 +296,7 @@ static void DBusSendMetadataArray(DBusMessageIter* dict_root, DBusMetadata meta[
 {
     DBusMessageIter root_variant, dict, dict_entry, variant;
 
-    dbus_message_iter_open_container(dict_root, DBUS_TYPE_VARIANT, "a{sv}", &root_variant);    
+    dbus_message_iter_open_container(dict_root, DBUS_TYPE_VARIANT, "a{sv}", &root_variant);
         // Open Root Container
         dbus_message_iter_open_container(&root_variant, DBUS_TYPE_ARRAY, "{sv}", &dict );
             for(size_t i = 0; i < dbus_meta_array_len; i++)
@@ -330,7 +330,7 @@ static void DBusSendMetadataArray(DBusMessageIter* dict_root, DBusMetadata meta[
 
                     dbus_message_iter_close_container(&dict_entry, &variant);
 
-                dbus_message_iter_close_container(&dict, &dict_entry ); 
+                dbus_message_iter_close_container(&dict, &dict_entry );
             }
         // Close Root Container
         dbus_message_iter_close_container(&root_variant, &dict);
@@ -420,7 +420,7 @@ static inline char* getArtPath(char* utf8album)
 
     // If we get here, we're probably in single track mode, or the playlist is named differently
     // check base path + album + .png
-    
+
     // Make sure there's enough space in the string
     if(basepathlen + strlen(utf8album) + 4 + 1 > MAX_PATH)
         RETURN_EMPTY_ART(basepath);
@@ -484,7 +484,7 @@ static void DBusSendMetadata(DBusMessageIter* dict_root)
     int32_t tracknum = 0;
     if(PLMode == 0x01)
         tracknum = (int32_t)(CurPLFile + 0x01);
-    
+
     // Try to get the cover art url
     char* artpath = getArtPath(utf8album);
 
@@ -588,7 +588,7 @@ static void DBusSendMetadata(DBusMessageIter* dict_root)
     int32_t usecnt = 0;
     double userrating = 0;
 
-    DBusMetadata meta[] = 
+    DBusMetadata meta[] =
     {
         { "mpris:trackid", DBUS_TYPE_STRING_AS_STRING, &trackid, DBUS_TYPE_STRING, 0 },
         { "xesam:url", DBUS_TYPE_STRING_AS_STRING, &url, DBUS_TYPE_STRING, 0 },
@@ -672,29 +672,29 @@ void DBus_EmitSignal(UINT8 type)
     DBusMessageIter args;
 
     if(type & SIGNAL_SEEK)
-    {              
+    {
         msg = dbus_message_new_signal(DBUS_MPRIS_PATH, DBUS_MPRIS_PLAYER, "Seeked");
         if (NULL == msg)
-        { 
-            fprintf(stderr, "Message Null\n"); 
-            exit(1); 
+        {
+            fprintf(stderr, "Message Null\n");
+            exit(1);
         }
 
         dbus_message_iter_init_append(msg, &args);
         int64_t response = ReturnPosMsec(VGMSmplPlayed, SampleRate);
-        if (!dbus_message_iter_append_basic(&args, DBUS_TYPE_INT64, &response)) { 
-            fprintf(stderr, "Out Of Memory!\n"); 
+        if (!dbus_message_iter_append_basic(&args, DBUS_TYPE_INT64, &response)) {
+            fprintf(stderr, "Out Of Memory!\n");
             exit(1);
         }
 
         if (!dbus_connection_send(connection, msg, NULL))
         {
-            fprintf(stderr, "Out Of Memory!\n"); 
+            fprintf(stderr, "Out Of Memory!\n");
             exit(1);
         }
 
         dbus_message_unref(msg);
-        
+
         // Despite Seeked() being a different signal
         // we need to send the changed position property too
         // so we shouldn't return just yet.
@@ -820,7 +820,7 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
 #endif
     if(!dbus_message_has_path(message, DBUS_MPRIS_PATH))
         return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-    
+
     // Respond to Introspect
     if(dbus_message_is_method_call(message, DBUS_INTERFACE_INTROSPECTABLE, "Introspect"))
     {
@@ -841,13 +841,13 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
         char* method_interface_arg = NULL;
         char* method_property_arg  = NULL;
         DBusMessage* reply;
-     
+
         dbus_error_init( &error );
         dbus_message_get_args( message, &error,
                 DBUS_TYPE_STRING, &method_interface_arg,
                 DBUS_TYPE_STRING, &method_property_arg,
                 DBUS_TYPE_INVALID );
-    
+
         if( dbus_error_is_set( &error ) )
         {
             printf("D-Bus message reading : %s",
@@ -856,16 +856,16 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
             return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
         }
 
-        //printf("Interface name: %s\n", method_interface_arg); 
+        //printf("Interface name: %s\n", method_interface_arg);
         //init reply
         reply = dbus_message_new_method_return(message);
 
-        //printf("Property name: %s\n", method_property_arg); 
-        
+        //printf("Property name: %s\n", method_property_arg);
+
         // Global Iterator
         DBusMessageIter args;
         dbus_message_iter_init_append(reply, &args);
-        
+
         if(!strcmp(method_interface_arg, DBUS_MPRIS_MEDIAPLAYER2))
         {
             if(!strcmp(method_property_arg, "SupportedMimeTypes"))
@@ -910,25 +910,25 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
             {
                 dbus_bool_t response = TRUE;
                 DBusReplyWithVariant(&args, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &response);
-            } 
+            }
             else if(!strcmp(method_property_arg, "CanPause"))
             {
                 dbus_bool_t response = TRUE;
                 DBusReplyWithVariant(&args, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &response);
-            } 
+            }
             else if(!strcmp(method_property_arg, "CanGoNext"))
             {
                 DBusAppendCanGoNext(&args);
-            } 
+            }
             else if(!strcmp(method_property_arg, "CanGoPrevious"))
             {
                 DBusAppendCanGoPrevious(&args);
-            } 
+            }
             else if(!strcmp(method_property_arg, "CanSeek"))
             {
                 dbus_bool_t response = TRUE;
                 DBusReplyWithVariant(&args, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &response);
-            } 
+            }
             else if(!strcmp(method_property_arg, "PlaybackStatus"))
             {
                 DBusSendPlaybackStatus(&args);
@@ -965,19 +965,19 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
             dbus_message_unref(reply);
             reply = dbus_message_new_error(message, "org.freedesktop.DBus.Error.InvalidArgs", "No such interface");
         }
-        
+
         dbus_connection_send(connection, reply, NULL);
         dbus_message_unref(reply);
-        
+
         return DBUS_HANDLER_RESULT_HANDLED;
     }
-    // Respond to GetAll 
+    // Respond to GetAll
     else if (dbus_message_is_method_call(message, DBUS_INTERFACE_PROPERTIES, "GetAll"))
     {
         DBusError error;
         char* method_interface_arg = NULL;
         DBusMessage* reply;
-     
+
         dbus_error_init(&error);
         dbus_message_get_args(message, &error,
             DBUS_TYPE_STRING, &method_interface_arg,
@@ -993,12 +993,12 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
         //init reply
         reply = dbus_message_new_method_return(message);
 
-        //printf("Property name: %s\n", property_name); 
-        
+        //printf("Property name: %s\n", property_name);
+
         // Global Iterator
         DBusMessageIter args;
         dbus_message_iter_init_append(reply, &args);
-        
+
         dbus_bool_t dbustrue = TRUE;
         dbus_bool_t dbusfalse = FALSE;
         char* title;
@@ -1009,7 +1009,7 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
             // a{sv}
             DBusMessageIter dict, dict_entry;
             dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
-            
+
                 // Open Dict
                 dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
                     // Field Title
@@ -1017,7 +1017,7 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
                     dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
                     DBusSendMimeTypes(&dict_entry);
                 dbus_message_iter_close_container(&dict, &dict_entry);
-            
+
                 dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
                     // Field Title
                     title = "SupportedUriSchemes";
@@ -1053,7 +1053,7 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
                     strresponse = "vgmplay";
                     DBusReplyWithVariant(&dict_entry, DBUS_TYPE_STRING, DBUS_TYPE_STRING_AS_STRING, &strresponse);
                 dbus_message_iter_close_container(&dict, &dict_entry);
-                
+
                 dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
                     // Field Title
                     title = "Identity";
@@ -1070,14 +1070,14 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
             // a{sv}
             DBusMessageIter dict, dict_entry;
             dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
-            
+
                 dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
                     // Field Title
                     title = "CanControl";
                     dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
                     DBusReplyWithVariant(&dict_entry, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &dbustrue);
                 dbus_message_iter_close_container(&dict, &dict_entry);
-            
+
                 dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
                     // Field Title
                     title = "CanGoNext";
@@ -1112,7 +1112,7 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
                     dbus_message_iter_append_basic(&dict_entry, DBUS_TYPE_STRING, &title);
                     DBusReplyWithVariant(&dict_entry, DBUS_TYPE_BOOLEAN, DBUS_TYPE_BOOLEAN_AS_STRING, &dbustrue);
                 dbus_message_iter_close_container(&dict, &dict_entry);
-                
+
                 dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
                     // Field Title
                     title = "Metadata";
@@ -1184,7 +1184,7 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
     {
         DBusError error;
         int64_t offset = 0;
-     
+
         dbus_error_init(&error);
         dbus_message_get_args(message, &error, DBUS_TYPE_INT64, &offset, DBUS_TYPE_INVALID);
 
@@ -1212,7 +1212,7 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
     {
         DBusEmptyMethodResponse(connection, message);
         evtCallback(MMKEY_PLAY);
-        
+
         return DBUS_HANDLER_RESULT_HANDLED;
     }
     //Respond to Previous
@@ -1246,7 +1246,7 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
 }
 
 UINT8 MultimediaKeyHook_Init(void)
-{ 
+{
     connection = dbus_bus_get(DBUS_BUS_SESSION, NULL);
     if(!connection)
         return 0x00;
@@ -1258,7 +1258,7 @@ UINT8 MultimediaKeyHook_Init(void)
         connection = NULL;
         return 0x00;
     }
-    
+
     DBusObjectPathVTable vtable =
     {
         .message_function = DBusHandler,
@@ -1293,5 +1293,6 @@ void DBus_ReadWriteDispatch()
         DBus_EmitSignal(SIGNAL_SEEK);
     }
 
+    // Wait at most 1ms
     dbus_connection_read_write_dispatch(connection, 1);
 }
