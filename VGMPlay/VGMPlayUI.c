@@ -116,7 +116,7 @@ static void PrintMinSec(UINT32 SamplePos, UINT32 SmplRate);
 
 // Options Variables
 extern UINT32 SampleRate;	// Note: also used by some sound cores to
-							//	   determinate the chip sample rate
+							//       determinate the chip sample rate
 
 extern UINT32 VGMPbRate;
 extern UINT32 VGMMaxLoop;

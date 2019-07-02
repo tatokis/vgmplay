@@ -44,6 +44,20 @@ They weren't lying when they said that using libdbus directly signs you up for s
 
 //#define DBUS_DEBUG
 
+#ifdef DBUS_DEBUG
+#define ART_EXISTS_PRINTF(x)    printf("\nTrying %s\n", (x));
+#else
+#define ART_EXISTS_PRINTF(x)
+#endif
+#define ART_EXISTS(path)        ART_EXISTS_PRINTF(path) \
+                                if(FileExists((path))) \
+                                    return (path)
+
+#define RETURN_EMPTY_ART(x)     { \
+                                    *(x) = '\0'; \
+                                    return (x); \
+                                }
+
 static mmkey_cbfunc evtCallback = NULL;
 INT32 VGMPbSmplCount;
 
@@ -102,15 +116,16 @@ static char* wcharToUTF8(wchar_t* GD3)
 
 static char* urlencode(char* str)
 {
+    size_t len = strlen(str);
     // Don't try to encode blank strings
-    if(!strlen(str))
+    if(!len)
         return calloc(1, sizeof(char));
 
     // strlen("file://") + max str size + \0
-    char* newstring = malloc(7 + strlen(str)*  3 + 1);
+    char* newstring = malloc(7 + len * 3 + 1);
     char* loop = newstring;
     loop += sprintf(loop, "%s", "file://");
-    for(size_t i = 0; i < strlen(str); i++)
+    for(size_t i = 0; i < len; i++)
     {
         // http://www.blooberry.com/indexdot/html/topics/urlencoding.htm
         unsigned char c = (unsigned char)str[i];
@@ -134,33 +149,25 @@ static char* urlencode(char* str)
                 else
                    loop += sprintf(loop, "%c", str[i]);
         }
-       /* if(c > 127 || c == 32 || c == 36 || c == 38 || c == 43 || c == 44 || c == 58 || c == 59 || c == 61 || c == 63 || c == 64)
-            loop += sprintf(loop, "%%%02X", c);
-        else
-            loop += sprintf(loop, "%c", str[i]);*/
     }
     return newstring;
 }
 
 // Return current position in μs
-static int64_t ReturnPosMsec(UINT32 SamplePos, UINT32 SmplRate)
+static inline int64_t ReturnPosMsec(UINT32 SamplePos, UINT32 SmplRate)
 {
     return (int64_t)((SamplePos / (double)SmplRate)*1000000.0);
 }
 
 // Return current position in samples
-static INT32 ReturnSamplePos(int64_t UsecPos, UINT32 SmplRate)
+static inline INT32 ReturnSamplePos(int64_t UsecPos, UINT32 SmplRate)
 {
     return (UsecPos / 1000000.0)*(double)SmplRate;
 }
 
-static bool FileExists(char* file)
+static inline int FileExists(char* file)
 {
     return access(file, F_OK) + 1;
-    /*if(access(file, F_OK) == -1)
-        return false;
-    else
-        return true;*/
 }
 
 // DBus Helper Functions
@@ -259,9 +266,7 @@ static void DBusReplyToIntrospect(DBusConnection* connection, DBusMessage* reque
 ;
 
     DBusMessage* reply = dbus_message_new_method_return(request);
-    dbus_message_append_args(reply,
-        DBUS_TYPE_STRING, &introspection_data,
-        DBUS_TYPE_INVALID);
+    dbus_message_append_args(reply, DBUS_TYPE_STRING, &introspection_data, DBUS_TYPE_INVALID);
     dbus_connection_send(connection, reply, NULL);
     dbus_message_unref(reply);
 }
@@ -298,7 +303,7 @@ static void DBusSendMetadataArray(DBusMessageIter* dict_root, DBusMetadata meta[
 
     dbus_message_iter_open_container(dict_root, DBUS_TYPE_VARIANT, "a{sv}", &root_variant);
         // Open Root Container
-        dbus_message_iter_open_container(&root_variant, DBUS_TYPE_ARRAY, "{sv}", &dict );
+        dbus_message_iter_open_container(&root_variant, DBUS_TYPE_ARRAY, "{sv}", &dict);
             for(size_t i = 0; i < dbus_meta_array_len; i++)
             {
                 // Ignore empty strings
@@ -319,8 +324,8 @@ static void DBusSendMetadataArray(DBusMessageIter* dict_root, DBusMetadata meta[
 
                                 for(size_t len = 0; len < meta[i].childLen; len++)
                                 {
-                                    DBusMetadata* chad = meta[i].content;
-                                    dbus_message_iter_append_basic(&array_root, chad[len].contentType, chad[len].content);
+                                    DBusMetadata* content = meta[i].content;
+                                    dbus_message_iter_append_basic(&array_root, content[len].contentType, content[len].content);
                                 }
 
                             dbus_message_iter_close_container(&variant, &array_root);
@@ -330,26 +335,12 @@ static void DBusSendMetadataArray(DBusMessageIter* dict_root, DBusMetadata meta[
 
                     dbus_message_iter_close_container(&dict_entry, &variant);
 
-                dbus_message_iter_close_container(&dict, &dict_entry );
+                dbus_message_iter_close_container(&dict, &dict_entry);
             }
         // Close Root Container
         dbus_message_iter_close_container(&root_variant, &dict);
     dbus_message_iter_close_container(dict_root, &root_variant);
 }
-
-#ifdef DBUS_DEBUG
-#define ART_EXISTS_PRINTF(x)    printf("\nTrying %s\n", (x));
-#else
-#define ART_EXISTS_PRINTF(x)
-#endif
-#define ART_EXISTS(path)        ART_EXISTS_PRINTF(path) \
-                                if(FileExists((path))) \
-                                    return (path)
-
-#define RETURN_EMPTY_ART(x)     { \
-                                    *(x) = '\0'; \
-                                    return (x); \
-                                }
 
 static inline char* getArtPath(char* utf8album)
 {
@@ -359,8 +350,6 @@ static inline char* getArtPath(char* utf8album)
     char* fileptr = VgmFileName;
     if(PLMode == 0x01)
         fileptr = PLFileName;
-
-    char* lastsep = GetLastDirSeparator(fileptr);
 
     // Get the base path
     // If the filename is absolute, then the base path is everything up to the last dir separator
@@ -381,6 +370,7 @@ static inline char* getArtPath(char* utf8album)
 #endif
     }
 
+    char* lastsep = GetLastDirSeparator(fileptr);
     // Append everything before (and including) the last dir separator, if one exists
     if(lastsep)
     {
@@ -611,13 +601,10 @@ static void DBusSendMetadata(DBusMessageIter* dict_root)
         { "vgm:notes", DBUS_TYPE_STRING_AS_STRING, &utf8notes, DBUS_TYPE_STRING, 0 },
         { "vgm:system", DBUS_TYPE_STRING_AS_STRING, &utf8system, DBUS_TYPE_STRING, 0 },
         { "vgm:version", DBUS_TYPE_UINT32_AS_STRING, &version, DBUS_TYPE_UINT32, 0 },
-        /*{ "vgm:gain", DBUS_TYPE_STRING_AS_STRING, &gain, DBUS_TYPE_STRING, 0 },*/
         { "vgm:loop", DBUS_TYPE_INT64_AS_STRING, &loop, DBUS_TYPE_INT64, 0 },
         { "vgm:chips", "as", &chips, DBUS_TYPE_ARRAY, chipslen },
     };
-    #define DBUS_META_LEN sizeof(meta) / sizeof(*meta)
-
-    DBusSendMetadataArray(dict_root, meta, DBUS_META_LEN);
+    DBusSendMetadataArray(dict_root, meta, sizeof(meta)/sizeof(*meta));
 
     // Free everything
     free(arturlescaped);
@@ -675,24 +662,12 @@ void DBus_EmitSignal(UINT8 type)
     if(type & SIGNAL_SEEK)
     {
         msg = dbus_message_new_signal(DBUS_MPRIS_PATH, DBUS_MPRIS_PLAYER, "Seeked");
-        if (NULL == msg)
-        {
-            fprintf(stderr, "Message Null\n");
-            exit(1);
-        }
 
         dbus_message_iter_init_append(msg, &args);
         int64_t response = ReturnPosMsec(VGMSmplPlayed, SampleRate);
-        if (!dbus_message_iter_append_basic(&args, DBUS_TYPE_INT64, &response)) {
-            fprintf(stderr, "Out Of Memory!\n");
-            exit(1);
-        }
+        dbus_message_iter_append_basic(&args, DBUS_TYPE_INT64, &response);
 
-        if (!dbus_connection_send(connection, msg, NULL))
-        {
-            fprintf(stderr, "Out Of Memory!\n");
-            exit(1);
-        }
+        dbus_connection_send(connection, msg, NULL);
 
         dbus_message_unref(msg);
 
@@ -711,7 +686,7 @@ void DBus_EmitSignal(UINT8 type)
     // Wrap everything inside an a{sv}
     DBusMessageIter dict, dict_entry;
 
-    dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict );
+    dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
         if(type & SIGNAL_METADATA)
         {
             dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, NULL, &dict_entry);
@@ -777,12 +752,12 @@ static void DBusSendMimeTypes(DBusMessageIter* args)
         dbus_message_iter_open_container(&variant, DBUS_TYPE_ARRAY, DBUS_TYPE_STRING_AS_STRING, &subargs);
             char* response[] = {"audio/x-vgm", "audio/x-vgz"};
             size_t i_len = sizeof(response) / sizeof(*response);
-            for( size_t i = 0; i < i_len; ++i )
+            for(size_t i = 0; i < i_len; ++i)
             {
                 dbus_message_iter_append_basic(&subargs, DBUS_TYPE_STRING, &response[i]);
             }
-        dbus_message_iter_close_container(&variant, &subargs );
-    dbus_message_iter_close_container(args, &variant );
+        dbus_message_iter_close_container(&variant, &subargs);
+    dbus_message_iter_close_container(args, &variant);
 }
 
 static void DBusSendUriSchemes(DBusMessageIter* args)
@@ -792,12 +767,12 @@ static void DBusSendUriSchemes(DBusMessageIter* args)
         dbus_message_iter_open_container(&variant, DBUS_TYPE_ARRAY, DBUS_TYPE_STRING_AS_STRING, &subargs);
             char* response[] = {"file"};
             size_t i_len = sizeof(response) / sizeof(*response);
-            for( size_t i = 0; i < i_len; ++i )
+            for(size_t i = 0; i < i_len; ++i)
             {
                 dbus_message_iter_append_basic(&subargs, DBUS_TYPE_STRING, &response[i]);
             }
-        dbus_message_iter_close_container(&variant, &subargs );
-    dbus_message_iter_close_container(args, &variant );
+        dbus_message_iter_close_container(&variant, &subargs);
+    dbus_message_iter_close_container(args, &variant);
 }
 
 static void DBusSendEmptyMethodResponse(DBusMessage* message)
@@ -828,7 +803,7 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
         DBusReplyToIntrospect(connection, message);
         return DBUS_HANDLER_RESULT_HANDLED;
     }
-    else if (dbus_message_is_method_call(message, DBUS_MPRIS_MEDIAPLAYER2, "Raise"))
+    else if(dbus_message_is_method_call(message, DBUS_MPRIS_MEDIAPLAYER2, "Raise"))
     {
         printf("\a");
         fflush(stdout);
@@ -836,26 +811,14 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
         return DBUS_HANDLER_RESULT_HANDLED;
     }
     // Respond to Get
-    else if (dbus_message_is_method_call(message, DBUS_INTERFACE_PROPERTIES, "Get"))
+    else if(dbus_message_is_method_call(message, DBUS_INTERFACE_PROPERTIES, "Get"))
     {
-        DBusError error;
         char* method_interface_arg = NULL;
         char* method_property_arg  = NULL;
         DBusMessage* reply;
 
-        dbus_error_init( &error );
-        dbus_message_get_args( message, &error,
-                DBUS_TYPE_STRING, &method_interface_arg,
-                DBUS_TYPE_STRING, &method_property_arg,
-                DBUS_TYPE_INVALID );
-
-        if( dbus_error_is_set( &error ) )
-        {
-            printf("D-Bus message reading : %s",
-                                            error.message );
-            dbus_error_free( &error );
+        if(!dbus_message_get_args(message, NULL, DBUS_TYPE_STRING, &method_interface_arg, DBUS_TYPE_STRING, &method_property_arg, DBUS_TYPE_INVALID))
             return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-        }
 
         //printf("Interface name: %s\n", method_interface_arg);
         //init reply
@@ -973,23 +936,13 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
         return DBUS_HANDLER_RESULT_HANDLED;
     }
     // Respond to GetAll
-    else if (dbus_message_is_method_call(message, DBUS_INTERFACE_PROPERTIES, "GetAll"))
+    else if(dbus_message_is_method_call(message, DBUS_INTERFACE_PROPERTIES, "GetAll"))
     {
-        DBusError error;
         char* method_interface_arg = NULL;
         DBusMessage* reply;
 
-        dbus_error_init(&error);
-        dbus_message_get_args(message, &error,
-            DBUS_TYPE_STRING, &method_interface_arg,
-            DBUS_TYPE_INVALID );
-
-        if(dbus_error_is_set(&error))
-        {
-            printf("GetAll: %s\n", error.message);
-            dbus_error_free(&error);
+        if(!dbus_message_get_args(message, NULL, DBUS_TYPE_STRING, &method_interface_arg, DBUS_TYPE_INVALID))
             return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-        }
 
         //init reply
         reply = dbus_message_new_method_return(message);
@@ -1065,7 +1018,7 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
 
             dbus_message_iter_close_container(&args, &dict);
         }
-        else if (!strcmp(method_interface_arg, DBUS_MPRIS_PLAYER))
+        else if(!strcmp(method_interface_arg, DBUS_MPRIS_PLAYER))
         {
             double doubleresponse = 1.0;
             // a{sv}
@@ -1181,20 +1134,13 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
         return DBUS_HANDLER_RESULT_HANDLED;
     }
     //Respond to Seek
-    else if (dbus_message_is_method_call(message, DBUS_MPRIS_PLAYER, "Seek"))
+    else if(dbus_message_is_method_call(message, DBUS_MPRIS_PLAYER, "Seek"))
     {
-        DBusError error;
         int64_t offset = 0;
 
-        dbus_error_init(&error);
-        dbus_message_get_args(message, &error, DBUS_TYPE_INT64, &offset, DBUS_TYPE_INVALID);
-
-        if(dbus_error_is_set(&error))
-        {
-            printf("GetAll: %s\n", error.message);
-            dbus_error_free(&error);
+        if(!dbus_message_get_args(message, NULL, DBUS_TYPE_INT64, &offset, DBUS_TYPE_INVALID))
             return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-        }
+
 #ifdef DBUS_DEBUG
         printf("Seek called with %lld\n", (long long)offset);
 #endif
@@ -1209,7 +1155,7 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
         return DBUS_HANDLER_RESULT_HANDLED;
     }
     //Respond to Play/PlayPause
-    else if (dbus_message_is_method_call(message, DBUS_MPRIS_PLAYER, "Play") || dbus_message_is_method_call(message, DBUS_MPRIS_PLAYER, "PlayPause"))
+    else if(dbus_message_is_method_call(message, DBUS_MPRIS_PLAYER, "Play") || dbus_message_is_method_call(message, DBUS_MPRIS_PLAYER, "PlayPause"))
     {
         DBusEmptyMethodResponse(connection, message);
         evtCallback(MMKEY_PLAY);
@@ -1217,7 +1163,7 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
         return DBUS_HANDLER_RESULT_HANDLED;
     }
     //Respond to Previous
-    else if (dbus_message_is_method_call(message, DBUS_MPRIS_PLAYER, "Previous"))
+    else if(dbus_message_is_method_call(message, DBUS_MPRIS_PLAYER, "Previous"))
     {
         DBusEmptyMethodResponse(connection, message);
         evtCallback(MMKEY_PREV);
@@ -1225,15 +1171,15 @@ static DBusHandlerResult DBusHandler(DBusConnection* connection, DBusMessage* me
         return DBUS_HANDLER_RESULT_HANDLED;
     }
     //Respond to Next
-    else if (dbus_message_is_method_call(message, DBUS_MPRIS_PLAYER, "Next"))
+    else if(dbus_message_is_method_call(message, DBUS_MPRIS_PLAYER, "Next"))
     {
         DBusEmptyMethodResponse(connection, message);
         evtCallback(MMKEY_NEXT);
         return DBUS_HANDLER_RESULT_HANDLED;
     }
-    else if (dbus_message_is_method_call(message, DBUS_INTERFACE_PROPERTIES, "Set"))
+    else if(dbus_message_is_method_call(message, DBUS_INTERFACE_PROPERTIES, "Set"))
     {
-        // Dummy Set to send a signal to revert Volume changes
+        // Dummy Set to send a signal to revert Volume change attempts
         DBus_EmitSignal(SIGNAL_VOLUME);
         return DBUS_HANDLER_RESULT_HANDLED;
     }
@@ -1294,6 +1240,6 @@ void DBus_ReadWriteDispatch()
         DBus_EmitSignal(SIGNAL_SEEK);
     }
 
-    // Wait at most 1ms
+    // Wait at most for 1ms
     dbus_connection_read_write_dispatch(connection, 1);
 }
