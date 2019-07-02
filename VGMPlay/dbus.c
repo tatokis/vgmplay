@@ -404,8 +404,9 @@ static inline char* getArtPath(char* utf8album)
     // If we are reading a playlist, append everything after the separator to the path and replace its m3u extension with png
     if(PLMode == 0x01)
     {
-        // copy the whole string after the separator excluding the file extension
-        char* filenameptr = lastsep + 1;
+        // Copy the whole string after the separator (if one exists), excluding the file extension
+        // Otherwise take the filename as-is
+        char* filenameptr = lastsep ? lastsep + 1 : PLFileName;
         size_t filenamelen =  strlen(filenameptr);
         // Make sure there's enough free space in the buffer
         if(basepathlen + filenamelen + 1 > MAX_PATH)
